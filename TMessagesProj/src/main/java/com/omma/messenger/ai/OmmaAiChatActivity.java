@@ -76,18 +76,29 @@ public class OmmaAiChatActivity extends BaseFragment {
 
     @Override
     public boolean onFragmentCreate() {
+        // Deliberately minimal: the parent ChatActivity may still be building its state here, and
+        // touching chat.messages at this point can throw. Everything that needs chat data runs in
+        // createView(), and every read below is null-guarded.
+        return super.onFragmentCreate();
+    }
+
+    private void ensureConversation() {
         if (chat == null) {
             BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
             if (last instanceof ChatActivity) {
                 chat = (ChatActivity) last;
             }
         }
-        chatTitle = chat == null ? null : resolveChatTitle(chat);
-        restoreConversation();
-        return super.onFragmentCreate();
-    }
-
-    private void restoreConversation() {
+        if (chat != null && chatTitle == null) {
+            try {
+                chatTitle = resolveChatTitle(chat);
+            } catch (Throwable ignore) {
+                chatTitle = null;
+            }
+        }
+        if (conversation != null) {
+            return;
+        }
         String activeId = OmmaAiHistory.getActiveId();
         conversation = activeId == null ? null : OmmaAiHistory.load(activeId);
         if (conversation == null) {
@@ -106,6 +117,44 @@ public class OmmaAiChatActivity extends BaseFragment {
 
     @Override
     public View createView(Context context) {
+        try {
+            ensureConversation();
+            return buildUi(context);
+        } catch (Throwable t) {
+            org.telegram.messenger.FileLog.e(t);
+            return buildErrorView(context, t);
+        }
+    }
+
+    private View buildErrorView(Context context, Throwable t) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24));
+
+        TextView title = new TextView(context);
+        title.setText("Не удалось открыть ассистента");
+        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        title.setTypeface(AndroidUtilities.bold());
+        title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        title.setGravity(Gravity.CENTER);
+        root.addView(title);
+
+        TextView detail = new TextView(context);
+        String message = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+        detail.setText(message);
+        detail.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        detail.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+        detail.setGravity(Gravity.CENTER);
+        detail.setPadding(0, AndroidUtilities.dp(8), 0, 0);
+        detail.setTextIsSelectable(true);
+        root.addView(detail);
+
+        actionBar.setTitle("Omma AI");
+        return root;
+    }
+
+    private View buildUi(Context context) {
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
         actionBar.setTitle("Omma AI");
@@ -195,7 +244,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         sendButton.setGravity(Gravity.CENTER);
         sendButton.setBackground(rounded(ACCENT, 22));
         sendButton.setOnClickListener(v -> sendFromInput());
-        row.addView(sendButton, LayoutHelper.createLinear(44, 44, 8, 0, 0, 0));
+        row.addView(sendButton, LayoutHelper.createLinear(44, 44, 0f, 8, 0, 0, 0));
         return row;
     }
 
@@ -298,10 +347,15 @@ public class OmmaAiChatActivity extends BaseFragment {
         }
         TextView toChat = createPill(getContext(), "В чат");
         toChat.setOnClickListener(v -> {
-            ChatActivityEnterView enterView = chat.getChatActivityEnterView();
-            if (enterView != null) {
-                enterView.setFieldText(answer);
-                finishFragment();
+            try {
+                ChatActivityEnterView enterView = chat.getChatActivityEnterView();
+                if (enterView != null) {
+                    enterView.setFieldText(answer);
+                    finishFragment();
+                }
+            } catch (Throwable t) {
+                org.telegram.messenger.FileLog.e(t);
+                Toast.makeText(getContext(), "Чат уже закрыт", Toast.LENGTH_SHORT).show();
             }
         });
         messagesLayout.addView(toChat, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT, 0, 0, 0, 8));
@@ -361,7 +415,8 @@ public class OmmaAiChatActivity extends BaseFragment {
         showDialog(builder.create());
     }
 
-    private void openHistory() {        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+    private void openHistory() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle("История диалогов");
         final ArrayList<OmmaAiHistory.Conversation> all = OmmaAiHistory.loadAll();
         if (all.isEmpty()) {
@@ -505,11 +560,21 @@ public class OmmaAiChatActivity extends BaseFragment {
 
     /** Last messages in chronological order. ChatActivity keeps the newest message at index 0. */
     private String buildChatContext() {
-        List<MessageObject> source = chat.messages;
+        List<MessageObject> source;
+        MessagesController controller;
+        try {
+            if (chat == null) {
+                return "";
+            }
+            source = chat.messages;
+            controller = MessagesController.getInstance(chat.getCurrentAccount());
+        } catch (Throwable t) {
+            org.telegram.messenger.FileLog.e(t);
+            return "";
+        }
         if (source == null || source.isEmpty()) {
             return "";
         }
-        MessagesController controller = MessagesController.getInstance(chat.getCurrentAccount());
         ArrayList<String> lines = new ArrayList<>();
         for (int i = 0; i < source.size() && lines.size() < CONTEXT_MESSAGES; i++) {
             MessageObject message = source.get(i);

@@ -46,6 +46,8 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     private Switch fabSwitch;
     private LinearLayout templatesLayout;
     private String selectedProvider;
+    private TextView modelsButton;
+    private boolean modelsLoading;
 
     @Override
     public View createView(Context context) {
@@ -106,8 +108,16 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         apiKeyField = field(context, card, "API-ключ", "sk-...", true);
         apiKeyField.setText(OmmaAiConfig.apiKey);
 
-        TextView loadModels = button(context, "Загрузить модели");
-        loadModels.setOnClickListener(v -> loadModels());
+        TextView loadModels = iconButton(context, "Загрузить модели", R.drawable.msg_download);
+        loadModels.setOnClickListener(v -> {
+            if (modelsLoading) {
+                return;
+            }
+            modelsLoading = true;
+            setButtonLoading(loadModels, true);
+            loadModels();
+        });
+        modelsButton = loadModels;
         card.addView(loadModels, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 8));
 
         modelValue = valueRow(context, card, "Модель из каталога");
@@ -155,11 +165,14 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         String baseUrl = baseUrlField.getText().toString().trim();
         String apiKey = apiKeyField.getText().toString().trim();
         if (baseUrl.isEmpty() || (OmmaAiConfig.requiresApiKey(selectedProvider) && apiKey.isEmpty())) {
+            setButtonLoading(modelsButton, false);
+            modelsLoading = false;
             toast(OmmaAiConfig.requiresApiKey(selectedProvider) ? "Укажи base URL и API-ключ" : "Укажи base URL");
             return;
         }
-        toast("Загружаю модели…");
         OmmaAiClient.fetchModels(baseUrl, apiKey, (models, error) -> {
+            modelsLoading = false;
+            setButtonLoading(modelsButton, false);
             if (getParentActivity() == null) {
                 return;
             }
@@ -174,6 +187,24 @@ public class OmmaAiSettingsActivity extends BaseFragment {
             OmmaAiConfig.saveDiscoveredModels(selectedProvider, models);
             showModelPicker(models);
         });
+    }
+
+    private void setButtonLoading(TextView buttonView, boolean loading) {
+        if (buttonView == null) {
+            return;
+        }
+        buttonView.setCompoundDrawablesWithIntrinsicBounds(
+            loading ? 0 : R.drawable.msg_download, 0, 0, 0);
+        buttonView.setCompoundDrawablePadding(AndroidUtilities.dp(6));
+        buttonView.setText(loading ? "Загружаю…" : "Загрузить модели");
+        buttonView.setAlpha(loading ? 0.65f : 1f);
+    }
+
+    private TextView iconButton(Context context, String text, int icon) {
+        TextView view = button(context, "  " + text);
+        view.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
+        view.setCompoundDrawablePadding(AndroidUtilities.dp(6));
+        return view;
     }
 
     private void showModelPicker(List<String> models) {

@@ -40,13 +40,13 @@ public final class OmmaThinkingView extends LinearLayout {
         setBackground(background);
 
         dots = new DotsView(context);
-        addView(dots, LayoutHelper.createLinear(AndroidUtilities.dp(28), AndroidUtilities.dp(18)));
+        addView(dots, LayoutHelper.createLinear(28, 18));
 
         label = new TextView(context);
         label.setText("Думает…");
         label.setTextSize(13);
         label.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
-        addView(label, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 6, 0, 0, 0));
+        addView(label, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0f, 6, 0, 0, 0));
     }
 
     public void setDotsHidden(boolean hidden) {
