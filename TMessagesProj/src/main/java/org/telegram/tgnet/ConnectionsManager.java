@@ -401,6 +401,7 @@ public class ConnectionsManager extends BaseController {
         }
 
         // --- Omma ghost mode hook (ported from AyuGram)
+        RequestDelegate ommaHooked = onComplete;
         {
             if (com.omma.messenger.ghost.OmmaGhostConfig.hideTyping &&
                 (object instanceof TLRPC.TL_messages_setTyping || object instanceof TLRPC.TL_messages_setEncryptedTyping)) {
@@ -428,9 +429,9 @@ public class ConnectionsManager extends BaseController {
                     } else {
                         fakeResponse = new TLRPC.TL_boolTrue();
                     }
-                    if (onComplete != null) {
+                    if (ommaHooked != null) {
                         try {
-                            onComplete.run(fakeResponse, null);
+                            ommaHooked.run(fakeResponse, null);
                         } catch (Exception e) {
                             FileLog.e(e);
                         }
@@ -443,9 +444,9 @@ public class ConnectionsManager extends BaseController {
             if (com.omma.messenger.ghost.OmmaGhostConfig.hideStoryViews &&
                 (object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_readStories || object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_incrementStoryViews)) {
                 TLObject fakeResponse = object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_readStories ? new Vector<>(Vector.Int::TLDeserialize) : new TLRPC.TL_boolTrue();
-                if (onComplete != null) {
+                if (ommaHooked != null) {
                     try {
-                        onComplete.run(fakeResponse, null);
+                        ommaHooked.run(fakeResponse, null);
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
@@ -454,24 +455,25 @@ public class ConnectionsManager extends BaseController {
             }
 
             if (com.omma.messenger.ghost.OmmaGhostConfig.markReadAfterSend && com.omma.messenger.ghost.OmmaGhostConfig.hideReadReceipts) {
-                TLRPC.InputPeer peer = null;
+                TLRPC.InputPeer ommaPeer = null;
                 if (object instanceof TLRPC.TL_messages_sendMessage) {
-                    peer = ((TLRPC.TL_messages_sendMessage) object).peer;
+                    ommaPeer = ((TLRPC.TL_messages_sendMessage) object).peer;
                 } else if (object instanceof TLRPC.TL_messages_sendMedia) {
-                    peer = ((TLRPC.TL_messages_sendMedia) object).peer;
+                    ommaPeer = ((TLRPC.TL_messages_sendMedia) object).peer;
                 } else if (object instanceof TLRPC.TL_messages_sendMultiMedia) {
-                    peer = ((TLRPC.TL_messages_sendMultiMedia) object).peer;
+                    ommaPeer = ((TLRPC.TL_messages_sendMultiMedia) object).peer;
                 }
-                if (peer != null) {
-                    final long dialogId = org.telegram.messenger.DialogObject.getPeerDialogId(peer);
-                    final RequestDelegate originalOnComplete = onComplete;
-                    onComplete = (response, error) -> {
+                if (ommaPeer != null) {
+                    final long dialogId = org.telegram.messenger.DialogObject.getPeerDialogId(ommaPeer);
+                    final RequestDelegate originalOnComplete = ommaHooked;
+                    final TLRPC.InputPeer finalPeer = ommaPeer;
+                    ommaHooked = (response, error) -> {
                         if (originalOnComplete != null) {
                             originalOnComplete.run(response, error);
                         }
                         getMessagesStorage().getDialogMaxMessageId(dialogId, maxId -> {
                             TLRPC.TL_messages_readHistory request = new TLRPC.TL_messages_readHistory();
-                            request.peer = peer;
+                            request.peer = finalPeer;
                             request.max_id = maxId;
                             com.omma.messenger.ghost.OmmaGhostState.setAllowReadPacket(true, 1);
                             sendRequest(request, (a1, a2) -> { });
@@ -480,6 +482,7 @@ public class ConnectionsManager extends BaseController {
                 }
             }
         }
+        final RequestDelegate ommaOnComplete = ommaHooked;
         // --- Omma ghost mode hook end
 
         try {
@@ -531,7 +534,7 @@ public class ConnectionsManager extends BaseController {
                             FileLog.d("Cleanup keys for " + currentAccount + " because of CONNECTION_NOT_INITED");
                         }
                         cleanup(true);
-                        sendRequest(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate);
+                        sendRequest(object, ommaOnComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate);
                         return;
                     }
                     if (resp != null) {
@@ -544,8 +547,8 @@ public class ConnectionsManager extends BaseController {
                     final TLObject finalResponse = resp;
                     final TLRPC.TL_error finalError = error;
                     Utilities.stageQueue.postRunnable(() -> {
-                        if (onComplete != null) {
-                            onComplete.run(finalResponse, finalError);
+                        if (ommaOnComplete != null) {
+                            ommaOnComplete.run(finalResponse, finalError);
                         } else if (onCompleteTimestamp != null) {
                             onCompleteTimestamp.run(finalResponse, finalError, timestamp);
                         } else if (finalResponse instanceof TLRPC.Updates) {
