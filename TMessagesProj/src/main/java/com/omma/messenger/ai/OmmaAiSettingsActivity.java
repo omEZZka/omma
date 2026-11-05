@@ -71,6 +71,7 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         scrollView.addView(root);
 
         root.addView(buildProviderCard(context), cardParams());
+        root.addView(buildConversationsCard(context), cardParams());
         root.addView(buildAssistantCard(context), cardParams());
         root.addView(buildTemplatesCard(context), cardParams());
 
@@ -234,6 +235,35 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     }
 
     // ---------- assistant ----------
+
+    private View buildConversationsCard(Context context) {
+        LinearLayout card = card(context, "Диалоги");
+
+        TextView history = button(context, "История диалогов");
+        history.setOnClickListener(v -> presentFragment(new OmmaAiChatActivity()));
+        card.addView(history, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 8));
+
+        TextView forget = new TextView(context);
+        forget.setText("Забыть все диалоги");
+        forget.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        forget.setTextColor(0xFFE53935);
+        forget.setPadding(0, AndroidUtilities.dp(4), 0, AndroidUtilities.dp(4));
+        forget.setOnClickListener(v -> {
+            org.telegram.ui.ActionBar.AlertDialog.Builder builder = new org.telegram.ui.ActionBar.AlertDialog.Builder(getParentActivity());
+            builder.setTitle("Забыть все диалоги?");
+            builder.setMessage("Вся история переписки с ассистентом будет удалена.");
+            builder.setPositiveButton("Удалить", (dialog, which) -> {
+                OmmaAiHistory.deleteAll();
+                toast("История очищена");
+            });
+            builder.setNegativeButton("Отмена", null);
+            showDialog(builder.create());
+        });
+        card.addView(forget);
+
+        hint(context, card, "Диалоги сохраняются на устройстве и продолжаются между сессиями.");
+        return card;
+    }
 
     private View buildAssistantCard(Context context) {
         LinearLayout card = card(context, "Ассистент");

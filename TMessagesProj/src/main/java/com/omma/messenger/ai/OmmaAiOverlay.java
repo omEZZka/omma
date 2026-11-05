@@ -46,7 +46,10 @@ public final class OmmaAiOverlay {
         if (fab == null) {
             return;
         }
-        boolean visible = OmmaAiConfig.fabEnabled
+        org.telegram.ui.ActionBar.BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+        boolean aiChatOpen = last instanceof OmmaAiChatActivity;
+        boolean visible = !aiChatOpen
+            && OmmaAiConfig.fabEnabled
             && UserConfig.getInstance(UserConfig.selectedAccount).isClientActivated()
             && !isAppLocked();
         fab.setVisibility(visible ? View.VISIBLE : View.GONE);
@@ -201,7 +204,14 @@ public final class OmmaAiOverlay {
         @Override
         public boolean performClick() {
             super.performClick();
-            OmmaAiSheet.open(getContext());
+            android.content.Context context = getContext();
+            org.telegram.ui.ActionBar.BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+            if (last != null) {
+                org.telegram.ui.ChatActivity chat = last instanceof org.telegram.ui.ChatActivity ? (org.telegram.ui.ChatActivity) last : null;
+                last.presentFragment(new OmmaAiChatActivity(chat));
+            } else {
+                android.widget.Toast.makeText(context, "Подожди, приложение загружается…", android.widget.Toast.LENGTH_SHORT).show();
+            }
             return true;
         }
     }
