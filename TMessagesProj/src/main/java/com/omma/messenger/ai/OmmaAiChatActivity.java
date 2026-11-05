@@ -150,7 +150,9 @@ public class OmmaAiChatActivity extends BaseFragment {
         detail.setTextIsSelectable(true);
         root.addView(detail);
 
-        actionBar.setTitle("Omma AI");
+        if (actionBar != null) {
+            actionBar.setTitle("Omma AI");
+        }
         return root;
     }
 
