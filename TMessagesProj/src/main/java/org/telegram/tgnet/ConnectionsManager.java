@@ -442,7 +442,7 @@ public class ConnectionsManager extends BaseController {
 
             if (com.omma.messenger.ghost.OmmaGhostConfig.hideStoryViews &&
                 (object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_readStories || object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_incrementStoryViews)) {
-                TLObject fakeResponse = object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_readStories ? new Vector<Vector.Int>() : new TLRPC.TL_boolTrue();
+                TLObject fakeResponse = object instanceof org.telegram.tgnet.tl.TL_stories.TL_stories_readStories ? new Vector<>(Vector.Int::TLDeserialize) : new TLRPC.TL_boolTrue();
                 if (onComplete != null) {
                     try {
                         onComplete.run(fakeResponse, null);
@@ -463,7 +463,7 @@ public class ConnectionsManager extends BaseController {
                     peer = ((TLRPC.TL_messages_sendMultiMedia) object).peer;
                 }
                 if (peer != null) {
-                    final long dialogId = DialogObject.getPeerDialogId(peer);
+                    final long dialogId = org.telegram.messenger.DialogObject.getPeerDialogId(peer);
                     final RequestDelegate originalOnComplete = onComplete;
                     onComplete = (response, error) -> {
                         if (originalOnComplete != null) {
