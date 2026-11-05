@@ -727,6 +727,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
         items.add(SettingCell.Factory.of(100, 0xFF3B82F6, 0xFF2563EB, R.drawable.settings_features, "Omma AI", "Ассистент, провайдер и модели"));
         items.add(SettingCell.Factory.of(101, 0xFF3B82F6, 0xFF1D4ED8, R.drawable.settings_privacy, "Призрак", "Скрыть прочтение, онлайн и печати"));
+        items.add(SettingCell.Factory.of(102, 0xFF6366F1, 0xFF4338CA, R.drawable.settings_features, "Плагины", "Импорт плагинов exteraGram (.py, .elyx, .eaf)"));
 
         items.add(UItem.asShadow(null));
         if (!walletAbove && getMessagesController().config.walletAvailable.get()) {
@@ -927,6 +928,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
             case 101: {
                 presentSettingFragment(new com.omma.messenger.ghost.OmmaGhostSettingsActivity());
+                break;
+            }
+            case 102: {
+                presentSettingFragment(new com.omma.messenger.plugins.OmmaPluginsSettingsActivity());
                 break;
             }
         }

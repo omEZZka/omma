@@ -48,11 +48,17 @@ public final class OmmaAiClient {
     public static void fetchModels(String baseUrl, String apiKey, Callback<List<String>> callback) {
         executor.execute(() -> {
             try {
-                String body = request(normalize(baseUrl) + "/models", apiKey, null);
-                JSONObject json = new JSONObject(body);
-                JSONArray array = json.optJSONArray("data");
-                if (array == null) {
-                    array = json.optJSONArray("models");
+                boolean horde = normalize(baseUrl).contains("aihorde.net/api/v2");
+                String body = request(normalize(baseUrl) + (horde ? "/status/models?type=text" : "/models"), apiKey, null);
+                JSONArray array;
+                if (horde) {
+                    array = new JSONArray(body);
+                } else {
+                    JSONObject json = new JSONObject(body);
+                    array = json.optJSONArray("data");
+                    if (array == null) {
+                        array = json.optJSONArray("models");
+                    }
                 }
                 ArrayList<String> ids = new ArrayList<>();
                 if (array != null) {
@@ -79,6 +85,11 @@ public final class OmmaAiClient {
         });
     }
 
+    /** Fetches a public catalog without an API key, for providers that expose one. */
+    public static void fetchPublicModels(String baseUrl, Callback<List<String>> callback) {
+        fetchModels(baseUrl, "", callback);
+    }
+
     public static void chat(List<Message> messages, Callback<String> callback) {
         final String baseUrl = OmmaAiConfig.baseUrl;
         final String apiKey = OmmaAiConfig.apiKey;
@@ -87,6 +98,10 @@ public final class OmmaAiClient {
 
         executor.execute(() -> {
             try {
+                if ("aihorde".equals(OmmaAiConfig.provider)) {
+                    chatWithAiHorde(messages, callback);
+                    return;
+                }
                 JSONArray array = new JSONArray();
                 for (Message message : messages) {
                     JSONObject item = new JSONObject();
@@ -121,6 +136,45 @@ public final class OmmaAiClient {
         });
     }
 
+    private static void chatWithAiHorde(List<Message> messages, Callback<String> callback) throws Exception {
+        StringBuilder prompt = new StringBuilder();
+        for (Message message : messages) {
+            prompt.append(message.role).append(": ").append(message.content).append("\n");
+        }
+        JSONObject payload = new JSONObject();
+        payload.put("prompt", prompt.toString());
+        payload.put("models", new JSONArray().put(OmmaAiConfig.model));
+        JSONObject params = new JSONObject();
+        params.put("max_context_length", 4096);
+        params.put("max_length", 512);
+        params.put("temperature", (double) OmmaAiConfig.temperature);
+        payload.put("params", params);
+
+        String requestBody = request("https://aihorde.net/api/v2/generate/text/async", "0000000000", payload.toString(), "apikey");
+        String id = new JSONObject(requestBody).optString("id");
+        if (TextUtils.isEmpty(id)) {
+            throw new IOException("AI Horde не вернул id запроса");
+        }
+        long deadline = System.currentTimeMillis() + 120_000L;
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(2500L);
+            String statusBody = request("https://aihorde.net/api/v2/generate/text/status/" + id, "", null);
+            JSONObject status = new JSONObject(statusBody);
+            if (status.optBoolean("done")) {
+                JSONArray generations = status.optJSONArray("generations");
+                if (generations != null && generations.length() > 0) {
+                    String result = generations.getJSONObject(0).optString("text");
+                    if (!TextUtils.isEmpty(result)) {
+                        AndroidUtilities.runOnUIThread(() -> callback.onResult(result.trim(), null));
+                        return;
+                    }
+                }
+                throw new IOException("AI Horde вернул пустой ответ");
+            }
+        }
+        throw new IOException("AI Horde отвечает слишком долго");
+    }
+
     private static String normalize(String baseUrl) {
         String url = baseUrl == null ? "" : baseUrl.trim();
         while (url.endsWith("/")) {
@@ -134,13 +188,17 @@ public final class OmmaAiClient {
     }
 
     private static String request(String url, String apiKey, String jsonBody) throws IOException {
+        return request(url, apiKey, jsonBody, "Authorization");
+    }
+
+    private static String request(String url, String apiKey, String jsonBody, String keyHeader) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setRequestProperty("Accept", "application/json");
             if (!TextUtils.isEmpty(apiKey)) {
-                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                connection.setRequestProperty(keyHeader, "Authorization".equals(keyHeader) ? "Bearer " + apiKey : apiKey);
             }
             if (jsonBody != null) {
                 connection.setRequestMethod("POST");

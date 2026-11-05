@@ -34,6 +34,7 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     private static final int ACCENT = 0xFF2563EB;
 
     private TextView providerValue;
+    private TextView modelValue;
     private TextView keyLink;
     private EditText baseUrlField;
     private EditText apiKeyField;
@@ -108,12 +109,15 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         loadModels.setOnClickListener(v -> loadModels());
         card.addView(loadModels, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 8));
 
-        modelField = field(context, card, "Модель", "например, gpt-4o-mini", false);
+        modelValue = valueRow(context, card, "Модель из каталога");
+        modelValue.setOnClickListener(v -> showCatalogPicker());
+        modelField = field(context, card, "Идентификатор модели", "например, gpt-4o-mini", false);
         modelField.setText(OmmaAiConfig.model);
 
         hint(context, card, "Ключ хранится только на устройстве и зашифрован Android Keystore.");
 
         updateProviderViews();
+        updateModelValue();
         return card;
     }
 
@@ -130,7 +134,12 @@ public class OmmaAiSettingsActivity extends BaseFragment {
             if (!TextUtils.isEmpty(provider.baseUrl)) {
                 baseUrlField.setText(provider.baseUrl);
             }
+            if (!OmmaAiConfig.getModelCatalog(provider.id).isEmpty()) {
+                OmmaAiConfig.ModelOption first = OmmaAiConfig.getModelCatalog(provider.id).get(0);
+                modelField.setText(first.id);
+            }
             updateProviderViews();
+            updateModelValue();
         });
         showDialog(builder.create());
     }
@@ -144,8 +153,8 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     private void loadModels() {
         String baseUrl = baseUrlField.getText().toString().trim();
         String apiKey = apiKeyField.getText().toString().trim();
-        if (baseUrl.isEmpty() || apiKey.isEmpty()) {
-            toast("Укажи base URL и API-ключ");
+        if (baseUrl.isEmpty() || (OmmaAiConfig.requiresApiKey(selectedProvider) && apiKey.isEmpty())) {
+            toast(OmmaAiConfig.requiresApiKey(selectedProvider) ? "Укажи base URL и API-ключ" : "Укажи base URL");
             return;
         }
         toast("Загружаю модели…");
@@ -161,16 +170,67 @@ public class OmmaAiSettingsActivity extends BaseFragment {
                 toast("Провайдер вернул пустой список");
                 return;
             }
+            OmmaAiConfig.saveDiscoveredModels(selectedProvider, models);
             showModelPicker(models);
         });
     }
 
     private void showModelPicker(List<String> models) {
-        CharSequence[] items = models.toArray(new CharSequence[0]);
+        java.util.ArrayList<String> allModels = new java.util.ArrayList<>();
+        for (OmmaAiConfig.ModelOption option : OmmaAiConfig.getModelCatalog(selectedProvider)) {
+            allModels.add(option.id);
+        }
+        for (String model : OmmaAiConfig.getDiscoveredModels(selectedProvider)) {
+            if (!allModels.contains(model)) {
+                allModels.add(model);
+            }
+        }
+        for (String model : models) {
+            if (!allModels.contains(model)) {
+                allModels.add(model);
+            }
+        }
+        CharSequence[] items = allModels.toArray(new CharSequence[0]);
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle("Моделей: " + models.size());
-        builder.setItems(items, (dialog, which) -> modelField.setText(models.get(which)));
+        builder.setTitle("Моделей: " + allModels.size());
+        builder.setItems(items, (dialog, which) -> {
+            modelField.setText(allModels.get(which));
+            updateModelValue();
+        });
         showDialog(builder.create());
+    }
+
+    private void showCatalogPicker() {
+        List<OmmaAiConfig.ModelOption> catalog = OmmaAiConfig.getModelCatalog();
+        CharSequence[] items = new CharSequence[catalog.size()];
+        for (int i = 0; i < catalog.size(); i++) {
+            OmmaAiConfig.ModelOption option = catalog.get(i);
+            String badge = option.free ? " · бесплатно" : "";
+            String key = option.requiresApiKey ? " · ключ" : " · без ключа";
+            items[i] = option.title + badge + key + "\n" + option.id;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle("Каталог моделей");
+        builder.setItems(items, (dialog, which) -> {
+            OmmaAiConfig.ModelOption option = catalog.get(which);
+            selectedProvider = option.provider;
+            OmmaAiConfig.Provider provider = OmmaAiConfig.findProvider(option.provider);
+            if (!TextUtils.isEmpty(provider.baseUrl)) {
+                baseUrlField.setText(provider.baseUrl);
+            }
+            modelField.setText(option.id);
+            updateProviderViews();
+            updateModelValue();
+        });
+        showDialog(builder.create());
+    }
+
+    private void updateModelValue() {
+        if (modelValue == null || modelField == null) {
+            return;
+        }
+        OmmaAiConfig.ModelOption selected = OmmaAiConfig.findModel(selectedProvider, modelField.getText().toString().trim());
+        modelValue.setText(selected == null ? "Выбрать из постоянного каталога" : selected.title);
     }
 
     // ---------- assistant ----------

@@ -1511,6 +1511,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @SuppressLint("Range")
     private boolean handleIntent(Intent intent, boolean isNew, boolean restore, boolean fromPassword, Browser.Progress progress, boolean rebuildFragments, boolean openedTelegram) {
+        if (com.omma.messenger.plugins.OmmaPluginManager.handleImportIntent(this, intent)) {
+            return true;
+        }
         if (GiftInfoBottomSheet.handleIntent(intent, progress)) {
             return true;
         }
