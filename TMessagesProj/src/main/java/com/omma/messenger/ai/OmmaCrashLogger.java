@@ -49,9 +49,9 @@ public final class OmmaCrashLogger {
         builder.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())).append('\n');
         builder.append(android.os.Build.MODEL != null ? android.os.Build.MODEL : "unknown").append(", Android ")
             .append(Build.VERSION.SDK_INT).append('\n');
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        throwable.printStackTrace(new java.io.PrintStream(out));
-        builder.append(out.toString(StandardCharsets.UTF_8.name()));
+        java.io.StringWriter sw = new java.io.StringWriter();
+        throwable.printStackTrace(new java.io.PrintWriter(sw));
+        builder.append(sw.toString());
         builder.append("\n----------------\n\n");
 
         ContentValues values = new ContentValues();
