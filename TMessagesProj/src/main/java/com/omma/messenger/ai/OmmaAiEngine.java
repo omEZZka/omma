@@ -120,7 +120,7 @@ public final class OmmaAiEngine {
             String idString = String.valueOf(dialogId);
             if (wantsSearch) {
                 String query = extractSearchQuery(prompt);
-                OmmaChatTools.searchInChat(idString, query, 10, callback);
+                OmmaChatTools.searchInChat(idString, query, 10, result -> AndroidUtilities.runOnUIThread(() -> callback.onResult(result)));
             } else {
                 AndroidUtilities.runOnUIThread(() -> callback.onResult(OmmaChatTools.readChat(idString, 40)));
             }
@@ -144,7 +144,7 @@ public final class OmmaAiEngine {
             }
         }
         AccountInstance account = AccountInstance.getInstance(UserConfig.selectedAccount);
-        ArrayList<TLRPC.Dialog> dialogs = new ArrayList<>(account.getMessagesController().allDialogs);
+        ArrayList<TLRPC.Dialog> dialogs = new ArrayList<>(account.getMessagesController().getDialogs(0));
         String lower = prompt.toLowerCase();
         for (TLRPC.Dialog dialog : dialogs) {
             String title = dialogTitle(account, dialog.id).toLowerCase();

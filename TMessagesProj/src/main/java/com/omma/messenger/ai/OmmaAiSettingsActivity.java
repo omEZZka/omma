@@ -283,38 +283,48 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     }
 
     private void pickDialogs(String title, ArrayList<String> target, TextView buttonView) {
-        AccountInstance account = AccountInstance.getInstance(UserConfig.getInstance(UserConfig.selectedAccount).getCurrentAccount());
-        ArrayList<TLRPC.Dialog> dialogs = new ArrayList<>(account.getMessagesController().allDialogs);
+        AccountInstance account = AccountInstance.getInstance(UserConfig.selectedAccount);
+        ArrayList<TLRPC.Dialog> dialogs = new ArrayList<>(account.getMessagesController().getDialogs(0));
         if (dialogs.isEmpty()) {
             toast("Список чатов ещё не загружен");
             return;
         }
         CharSequence[] names = new CharSequence[dialogs.size()];
-        boolean[] checked = new boolean[dialogs.size()];
         for (int i = 0; i < dialogs.size(); i++) {
-            TLRPC.Dialog dialog = dialogs.get(i);
-            names[i] = dialogTitle(account, dialog.id);
-            checked[i] = target.contains(String.valueOf(dialog.id));
+            names[i] = dialogTitle(account, dialogs.get(i).id);
+        }
+        ArrayList<Integer> selected = new ArrayList<>();
+        for (int i = 0; i < dialogs.size(); i++) {
+            if (target.contains(String.valueOf(dialogs.get(i).id))) {
+                selected.add(i);
+            }
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(title);
-        builder.setMultiChoiceItems(names, checked, (dialog, which, isChecked) -> {
+        CharSequence[] names = new CharSequence[dialogs.size()];
+        for (int i = 0; i < dialogs.size(); i++) {
+            names[i] = (selected.contains(i) ? "☑ " : "☐ ") + dialogTitle(account, dialogs.get(i).id);
+        }
+        builder.setItems(names, (dialog, which) -> {
             String id = String.valueOf(dialogs.get(which).id);
-            if (isChecked) {
+            if (selected.contains(which)) {
+                selected.remove((Integer) which);
+                target.remove(id);
+            } else {
+                selected.add(which);
                 if (!target.contains(id)) {
                     target.add(id);
                 }
-            } else {
-                target.remove(id);
             }
-        });
-        builder.setPositiveButton("Готово", (dialog, which) -> {
             OmmaAiConfig.save();
+            ((android.app.Dialog) dialog).dismiss();
+            pickDialogs(title, target, buttonView);
+        });
+        builder.setNegativeButton("Готово", (dialog, which) -> {
             if (buttonView != null) {
                 buttonView.setText(buttonView.getText().toString().replaceAll("\\(\\d+\\)", "(" + target.size() + ")"));
             }
         });
-        builder.setNegativeButton("Отмена", (dialog, which) -> OmmaAiConfig.load());
         showDialog(builder.create());
     }
 

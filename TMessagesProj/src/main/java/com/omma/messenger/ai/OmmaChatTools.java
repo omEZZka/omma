@@ -66,7 +66,7 @@ public final class OmmaChatTools {
         MessagesController controller = account.getMessagesController();
         JSONArrayCompat array = new JSONArrayCompat();
         int limit = 60;
-        for (TLRPC.Dialog dialog : new ArrayList<>(controller.allDialogs)) {
+        for (TLRPC.Dialog dialog : new ArrayList<>(controller.getDialogs(0))) {
             if (limit-- <= 0) {
                 break;
             }
@@ -74,12 +74,10 @@ public final class OmmaChatTools {
                 continue;
             }
             String title = dialogTitle(account, dialog.id);
-            String last = dialog.last_message != null ? messageText(dialog.last_message, account) : "";
             array.put(new JSONObjectCompat()
                 .put("id", String.valueOf(dialog.id))
                 .put("title", title)
-                .put("type", dialog.id > 0 ? "private" : "group")
-                .put("lastMessage", last));
+                .put("type", dialog.id > 0 ? "private" : "group"));
         }
         return array.toString();
     }
@@ -113,7 +111,7 @@ public final class OmmaChatTools {
         NotificationCenter center = account.getNotificationCenter();
         center.addObserver(listener, NotificationCenter.messagesDidLoad);
         try {
-            account.getMessagesController().loadMessages(dialogId, 0, false, finalCount, 0, 0, true, 0, classGuid, 0, 0, 0, 0, 0, false);
+            account.getMessagesController().loadMessages(dialogId, 0L, false, finalCount, 0, 0, true, 0, classGuid, 0, 0, 0, 0L, 0, 0, false);
             synchronized (lock) {
                 lock.wait(4000);
             }
