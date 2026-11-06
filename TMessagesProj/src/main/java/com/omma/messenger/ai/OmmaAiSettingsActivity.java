@@ -289,10 +289,6 @@ public class OmmaAiSettingsActivity extends BaseFragment {
             toast("Список чатов ещё не загружен");
             return;
         }
-        CharSequence[] names = new CharSequence[dialogs.size()];
-        for (int i = 0; i < dialogs.size(); i++) {
-            names[i] = dialogTitle(account, dialogs.get(i).id);
-        }
         ArrayList<Integer> selected = new ArrayList<>();
         for (int i = 0; i < dialogs.size(); i++) {
             if (target.contains(String.valueOf(dialogs.get(i).id))) {
@@ -301,11 +297,11 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(title);
-        CharSequence[] names = new CharSequence[dialogs.size()];
+        CharSequence[] labels = new CharSequence[dialogs.size()];
         for (int i = 0; i < dialogs.size(); i++) {
-            names[i] = (selected.contains(i) ? "☑ " : "☐ ") + dialogTitle(account, dialogs.get(i).id);
+            labels[i] = (selected.contains(i) ? "☑ " : "☐ ") + dialogTitle(account, dialogs.get(i).id);
         }
-        builder.setItems(names, (dialog, which) -> {
+        builder.setItems(labels, (dialog, which) -> {
             String id = String.valueOf(dialogs.get(which).id);
             if (selected.contains(which)) {
                 selected.remove((Integer) which);

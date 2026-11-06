@@ -136,7 +136,7 @@ public final class OmmaAiEngine {
 
     /** Finds a dialog by id in the prompt or by title match ("в чате Петя"). */
     private static long matchDialogId(String prompt) {
-        java.util.regex.Matcher digits = java.util.Pattern.compile("(?:id|ид|чат)\\s*[:#]?\\s*(-?\\d{6,})").matcher(prompt);
+        java.util.regex.Matcher digits = java.util.regex.Pattern.compile("(?:id|ид|чат)\\s*[:#]?\\s*(-?\\d{6,})").matcher(prompt);
         if (digits.find()) {
             try {
                 return Long.parseLong(digits.group(1));
@@ -157,11 +157,11 @@ public final class OmmaAiEngine {
     }
 
     private static String extractSearchQuery(String prompt) {
-        java.util.regex.Matcher quoted = java.util.Pattern.compile("[«\"]([^«»\"]+)[»\"]").matcher(prompt);
+        java.util.regex.Matcher quoted = java.util.regex.Pattern.compile("[«\"]([^«»\"]+)[»\"]").matcher(prompt);
         if (quoted.find()) {
             return quoted.group(1);
         }
-        java.util.regex.Matcher after = java.util.Pattern.compile("(?:найди|поиск|поищи)\\s+(?:в\\s+\\S+\\s+)?(.{2,60})").matcher(prompt);
+        java.util.regex.Matcher after = java.util.regex.Pattern.compile("(?:найди|поиск|поищи)\\s+(?:в\\s+\\S+\\s+)?(.{2,60})").matcher(prompt);
         if (after.find()) {
             return after.group(1).trim();
         }
