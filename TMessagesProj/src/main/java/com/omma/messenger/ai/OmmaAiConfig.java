@@ -112,7 +112,37 @@ public final class OmmaAiConfig {
     };
 
     public static final String DEFAULT_SYSTEM_PROMPT =
-        "Ты — Omma, встроенный ИИ-ассистент мессенджера. Отвечай кратко и по делу, на языке пользователя. Если дан контекст чата — учитывай его.";
+        "Ты — Omma, встроенный ИИ-ассистент мессенджера. Отвечай кратко и по делу, на языке пользователя. Если дан контекст чата — учитывай его. "
+        + "Если пользователь попросил запомнить предпочтение (стиль, тон, обращения) — кратко подтверди это отдельной строкой вида «Запомнила: …».";
+
+    /** Named rewrite styles available from the send-button dropdown and the answer picker. */
+    public static final class Style {
+        public final String id;
+        public final String title;
+        public final String instruction;
+
+        public Style(String id, String title, String instruction) {
+            this.id = id;
+            this.title = title;
+            this.instruction = instruction;
+        }
+    }
+
+    public static final Style[] STYLES = {
+        new Style("business", "Деловой", "Перепиши текст в строго деловом стиле: нейтрально, вежливо, без сленга и эмодзи."),
+        new Style("short", "Коротко", "Сожми текст до одной-двух коротких фраз. Убери всё второстепенное."),
+        new Style("church", "Церковный/библейский", "Перепиши текст в стиле церковнославянской и библейской речи: торжественно, с архаичными оборотами («о, да», «воистину», «.Inner аще»), без кощунства."),
+        new Style("viking", "Скандинавский/викингский", "Перепиши текст речью викинга: суровые образы саг, море, путь, руны, обращение к собеседнику как к воину."),
+    };
+
+    public static Style findStyle(String id) {
+        for (Style style : STYLES) {
+            if (style.id.equals(id)) {
+                return style;
+            }
+        }
+        return null;
+    }
 
     private static final String PREFS_NAME = "omma_ai";
     private static final float DEFAULT_TEMPERATURE = 0.7f;
@@ -125,6 +155,10 @@ public final class OmmaAiConfig {
     public static float temperature;
     public static boolean useContext;
     public static boolean fabEnabled;
+    public static boolean allowProfanity;
+    public static boolean showReasoning;
+    /** Extra instructions the assistant learns from conversations, shown in settings. */
+    public static String learnedPreferences;
     /** Saved button position as a fraction of the container, -1 means default. */
     public static float fabX;
     public static float fabY;
@@ -158,6 +192,9 @@ public final class OmmaAiConfig {
         temperature = p.getFloat("temperature", DEFAULT_TEMPERATURE);
         useContext = p.getBoolean("useContext", true);
         fabEnabled = p.getBoolean("fabEnabled", true);
+        allowProfanity = p.getBoolean("allowProfanity", false);
+        showReasoning = p.getBoolean("showReasoning", false);
+        learnedPreferences = p.getString("learnedPreferences", "");
         fabX = p.getFloat("fabX", -1f);
         fabY = p.getFloat("fabY", -1f);
 
@@ -181,7 +218,6 @@ public final class OmmaAiConfig {
 
     private static void addDefaultTemplates() {
         templates.add(new Template("Кратко о чате", "Кратко перескажи суть последних сообщений в этом чате и выдели главное."));
-        templates.add(new Template("Предложить ответ", "Предложи 3 варианта ответа на последнее сообщение: короткий, дружеский и деловой."));
         templates.add(new Template("Перевести", "Переведи последнее сообщение на русский язык. Если оно уже на русском — переведи на английский."));
         templates.add(new Template("Сменить тон", "Перепиши последнее сообщение в деловом, а затем в дружеском тоне."));
     }
@@ -212,6 +248,9 @@ public final class OmmaAiConfig {
             .putFloat("temperature", temperature)
             .putBoolean("useContext", useContext)
             .putBoolean("fabEnabled", fabEnabled)
+            .putBoolean("allowProfanity", allowProfanity)
+            .putBoolean("showReasoning", showReasoning)
+            .putString("learnedPreferences", learnedPreferences)
             .putFloat("fabX", fabX)
             .putFloat("fabY", fabY)
             .putString("templates", array.toString())
@@ -222,6 +261,28 @@ public final class OmmaAiConfig {
         fabX = x;
         fabY = y;
         prefs().edit().putFloat("fabX", x).putFloat("fabY", y).apply();
+    }
+
+    /** Adds an observation about the user's taste to the learned-preferences note. */
+    public static void addLearnedPreference(String observation) {
+        if (TextUtils.isEmpty(observation)) {
+            return;
+        }
+        String note = learnedPreferences == null ? "" : learnedPreferences;
+        if (note.contains(observation)) {
+            return;
+        }
+        note = note.isEmpty() ? observation : note + "\n" + observation;
+        String[] lines = note.split("\n");
+        StringBuilder trimmed = new StringBuilder();
+        for (int i = Math.max(0, lines.length - 12); i < lines.length; i++) {
+            if (trimmed.length() > 0) {
+                trimmed.append('\n');
+            }
+            trimmed.append(lines[i]);
+        }
+        learnedPreferences = trimmed.toString();
+        prefs().edit().putString("learnedPreferences", learnedPreferences).apply();
     }
 
     public static boolean isConfigured() {

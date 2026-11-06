@@ -44,6 +44,8 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     private SeekBar temperatureBar;
     private Switch contextSwitch;
     private Switch fabSwitch;
+    private Switch profanitySwitch;
+    private Switch reasoningSwitch;
     private LinearLayout templatesLayout;
     private String selectedProvider;
     private TextView modelsButton;
@@ -328,6 +330,16 @@ public class OmmaAiSettingsActivity extends BaseFragment {
 
         contextSwitch = toggle(context, card, "Учитывать контекст чата", OmmaAiConfig.useContext);
         fabSwitch = toggle(context, card, "Плавающая кнопка ассистента", OmmaAiConfig.fabEnabled);
+        profanitySwitch = toggle(context, card, "Разрешить ассистенту материться", OmmaAiConfig.allowProfanity);
+        reasoningSwitch = toggle(context, card, "Показывать рассуждения модели", OmmaAiConfig.showReasoning);
+
+        TextView learned = new TextView(context);
+        learned.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        learned.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+        learned.setPadding(0, AndroidUtilities.dp(8), 0, AndroidUtilities.dp(4));
+        learned.setText("Что ассистент запомнил:\n" + (OmmaAiConfig.learnedPreferences == null || OmmaAiConfig.learnedPreferences.isEmpty()
+            ? "пока ничего" : OmmaAiConfig.learnedPreferences));
+        card.addView(learned);
         return card;
     }
 
@@ -421,6 +433,8 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         OmmaAiConfig.temperature = temperatureBar.getProgress() / 10f;
         OmmaAiConfig.useContext = contextSwitch.isChecked();
         OmmaAiConfig.fabEnabled = fabSwitch.isChecked();
+        OmmaAiConfig.allowProfanity = profanitySwitch.isChecked();
+        OmmaAiConfig.showReasoning = reasoningSwitch.isChecked();
         OmmaAiConfig.save();
         OmmaAiOverlay.updateVisibility();
     }
