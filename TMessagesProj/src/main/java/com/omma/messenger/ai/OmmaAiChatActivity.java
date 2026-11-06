@@ -280,24 +280,52 @@ public class OmmaAiChatActivity extends BaseFragment {
         sendButton.setTextColor(0xFFFFFFFF);
         sendButton.setGravity(Gravity.CENTER);
         sendButton.setBackground(rounded(ACCENT, 22));
-        sendButton.setOnClickListener(v -> showSendMenu());
+        sendButton.setOnClickListener(v -> {
+            if (busy) {
+                stopGeneration();
+            } else {
+                sendAsIs();
+            }
+        });
+        sendButton.setOnLongClickListener(v -> {
+            if (!busy) {
+                showSendMenu();
+            }
+            return true;
+        });
         row.addView(sendButton, LayoutHelper.createLinear(44, 44, 0f, 8, 0, 0, 0));
 
-        // Quick templates: a lightning icon next to the input, list pops up on tap.
+        // Quick templates: a compact lightning icon next to the input, list pops up on tap.
         TextView templatesButton = new TextView(context);
         templatesButton.setText("⚡");
-        templatesButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
+        templatesButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         templatesButton.setGravity(Gravity.CENTER);
         templatesButton.setTextColor(ACCENT);
-        GradientDrawable pill = rounded(0x1A2563EB, 22);
+        GradientDrawable pill = rounded(0x1A2563EB, 18);
         pill.setStroke(AndroidUtilities.dp(1), 0x552563EB);
         templatesButton.setBackground(pill);
         templatesButton.setOnClickListener(v -> showPromptsMenu());
-        row.addView(templatesButton, LayoutHelper.createLinear(44, 44, 4f, 8, 0, 0, 0));
+        row.addView(templatesButton, LayoutHelper.createLinear(36, 36, 4f, 8, 0, 0, 0));
         return row;
     }
 
     /** Long-press the send button for the style dropdown; single tap sends as-is. */
+    private void sendAsIs() {
+        String text = input.getText().toString().trim();
+        if (text.isEmpty()) {
+            AndroidUtilities.shakeView(sendButton);
+            return;
+        }
+        input.setText("");
+        send(text, text);
+    }
+
+    /** Turns the send button into a stop button while the model is generating. */
+    private void stopGeneration() {
+        OmmaAiEngine.get().cancelAll();
+    }
+
+    /** Long-press opens the style dropdown; the prompt can then be sent rewritten in that style. */
     private void showSendMenu() {
         String text = input.getText().toString().trim();
         if (text.isEmpty()) {
@@ -783,8 +811,10 @@ public class OmmaAiChatActivity extends BaseFragment {
     private void setBusy(boolean value) {
         busy = value;
         if (sendButton != null) {
-            sendButton.setAlpha(value ? 0.5f : 1f);
-            sendButton.setEnabled(!value);
+            sendButton.setText(value ? "■" : "↑");
+            sendButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, value ? 16 : 20);
+            sendButton.setAlpha(value ? 0.9f : 1f);
+            sendButton.setEnabled(true);
         }
     }
 

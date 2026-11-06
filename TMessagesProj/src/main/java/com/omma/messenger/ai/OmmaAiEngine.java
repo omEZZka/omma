@@ -35,6 +35,7 @@ public final class OmmaAiEngine {
     }
 
     private final ArrayList<String> runningConversationIds = new ArrayList<>();
+    private final ArrayList<OmmaAiClient.CancelToken> runningCancelTokens = new ArrayList<>();
     private OmmaAiEngine.Listener listener;
 
     public void setListener(Listener value) {
@@ -45,12 +46,27 @@ public final class OmmaAiEngine {
         return conversationId != null && runningConversationIds.contains(conversationId);
     }
 
+    /** Aborts every in-flight request; the conversation gets a "прервано" note instead of an answer. */
+    public void cancelAll() {
+        ArrayList<OmmaAiClient.CancelToken> tokens;
+        synchronized (runningCancelTokens) {
+            tokens = new ArrayList<>(runningCancelTokens);
+        }
+        for (OmmaAiClient.CancelToken token : tokens) {
+            OmmaAiClient.cancel(token);
+        }
+    }
+
     public void request(OmmaAiHistory.Conversation conversation, String prompt, String chatTitle, String chatContext) {
         if (!OmmaAiConfig.isConfigured() || conversation == null || isRunning(conversation.id)) {
             return;
         }
         runningConversationIds.add(conversation.id);
         String conversationId = conversation.id;
+        OmmaAiClient.CancelToken cancelToken = OmmaAiClient.newCancelToken();
+        synchronized (runningCancelTokens) {
+            runningCancelTokens.add(cancelToken);
+        }
 
         // Function calling, step 1: the user prompt may name a chat tool. If it does, run the
         // tool first and prepend its result to the request so the model answers from real data.
@@ -82,14 +98,19 @@ public final class OmmaAiEngine {
             if (toolResult != null) {
                 request.add(new OmmaAiClient.Message("system", "Результат инструмента:\n" + toolResult.text));
             }
-            OmmaAiClient.chat(request, (answer, error) -> {
+            OmmaAiClient.chat(request, cancelToken, (answer, error) -> {
+                synchronized (runningCancelTokens) {
+                    runningCancelTokens.remove(cancelToken);
+                }
                 runningConversationIds.remove(conversationId);
                 OmmaAiHistory.Conversation stored = OmmaAiHistory.load(conversationId);
                 if (stored == null) {
                     notifyListener();
                     return;
                 }
-                if (error != null) {
+                if (OmmaAiClient.CANCELLED.equals(error)) {
+                    stored.entries.add(new OmmaAiHistory.Entry("assistant", "⏹ Генерация прервана."));
+                } else if (error != null) {
                     stored.entries.add(new OmmaAiHistory.Entry("assistant", "Ошибка: " + error));
                 } else {
                     stored.entries.add(new OmmaAiHistory.Entry("assistant", answer));
@@ -134,26 +155,71 @@ public final class OmmaAiEngine {
         callback.onResult(null);
     }
 
-    /** Finds a dialog by id in the prompt or by title match ("в чате Петя"). */
+    /** Finds a dialog by id in the prompt, or by title/contact/username match ("в чате Петя"). */
     private static long matchDialogId(String prompt) {
         java.util.regex.Matcher digits = java.util.regex.Pattern.compile("(?:id|ид|чат)\\s*[:#]?\\s*(-?\\d{6,})").matcher(prompt);
         if (digits.find()) {
             try {
-                return Long.parseLong(digits.group(1));
+                long id = Long.parseLong(digits.group(1));
+                return OmmaChatTools.canAccess(id) ? id : Long.MIN_VALUE;
             } catch (NumberFormatException ignore) {
             }
         }
         AccountInstance account = AccountInstance.getInstance(UserConfig.selectedAccount);
         ArrayList<TLRPC.Dialog> dialogs = new ArrayList<>(account.getMessagesController().getDialogs(0));
-        String lower = prompt.toLowerCase();
+        String lower = prompt.toLowerCase().replace('ё', 'е');
+
+        // Explicit pattern: "в чате X", "читай X", "чат X", "в «X»" — capture the candidate name.
+        String named = null;
+        java.util.regex.Matcher name = java.util.regex.Pattern.compile(
+            "(?:в чате|читай|прочитай|чате|чат|в «|из чата)\\s*«?([\\p{L}\\p{Nd}_ .@-]{2,40})»?").matcher(lower);
+        if (name.find()) {
+            named = name.group(1).trim();
+        }
+
+        long best = Long.MIN_VALUE;
+        int bestScore = 0;
         for (TLRPC.Dialog dialog : dialogs) {
-            String title = dialogTitle(account, dialog.id).toLowerCase();
-            if (title.length() > 3 && lower.contains("чате " + title) || lower.contains("чат «" + title + "»")
-                || lower.contains("читай " + title) || lower.contains("в «" + title + "»")) {
-                return dialog.id;
+            if (dialog == null || !OmmaChatTools.canAccess(dialog.id)) {
+                continue;
+            }
+            String title = dialogTitle(account, dialog.id).toLowerCase().replace('ё', 'е');
+            String username = dialogUsername(account, dialog.id);
+            int score = 0;
+            if (named != null) {
+                if (!title.isEmpty() && (named.equals(title) || named.contains(title) || title.contains(named))) {
+                    score = title.length() + 10;
+                } else if (username != null && (named.equals(username) || named.contains(username))) {
+                    score = username.length() + 10;
+                }
+            } else {
+                if (title.length() > 3 && (lower.contains("чате " + title) || lower.contains("чат «" + title + "»")
+                    || lower.contains("читай " + title) || lower.contains("в «" + title + "»"))) {
+                    score = title.length();
+                } else if (username != null && username.length() > 2 && lower.contains(username)) {
+                    score = username.length();
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = dialog.id;
             }
         }
-        return Long.MIN_VALUE;
+        return best;
+    }
+
+    /** @username of a dialog's peer, lowercase without '@', or null. */
+    private static String dialogUsername(AccountInstance account, long dialogId) {
+        try {
+            if (dialogId > 0) {
+                TLRPC.User user = account.getMessagesController().getUser(dialogId);
+                return user != null && !TextUtils.isEmpty(user.username) ? user.username.toLowerCase() : null;
+            }
+            TLRPC.Chat chat = account.getMessagesController().getChat(-dialogId);
+            return chat != null && !TextUtils.isEmpty(chat.username) ? chat.username.toLowerCase() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String extractSearchQuery(String prompt) {

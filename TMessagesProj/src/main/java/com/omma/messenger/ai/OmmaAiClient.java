@@ -42,7 +42,26 @@ public final class OmmaAiClient {
 
     private static final ExecutorService executor = Executors.newFixedThreadPool(2);
 
+    /** Cancellation handle: pass to chat() and cancel() to abort the request. */
+    public static final class CancelToken {
+        volatile boolean cancelled;
+
+        public boolean isCancelled() {
+            return cancelled;
+        }
+    }
+
     private OmmaAiClient() {
+    }
+
+    public static CancelToken newCancelToken() {
+        return new CancelToken();
+    }
+
+    public static void cancel(CancelToken token) {
+        if (token != null) {
+            token.cancelled = true;
+        }
     }
 
     public static void fetchModels(String baseUrl, String apiKey, Callback<List<String>> callback) {
@@ -90,7 +109,7 @@ public final class OmmaAiClient {
         fetchModels(baseUrl, "", callback);
     }
 
-    public static void chat(List<Message> messages, Callback<String> callback) {
+    public static void chat(List<Message> messages, CancelToken cancelToken, Callback<String> callback) {
         final String baseUrl = OmmaAiConfig.baseUrl;
         final String apiKey = OmmaAiConfig.apiKey;
         final String model = OmmaAiConfig.model;
@@ -99,7 +118,11 @@ public final class OmmaAiClient {
         executor.execute(() -> {
             try {
                 if ("aihorde".equals(OmmaAiConfig.provider)) {
-                    chatWithAiHorde(messages, callback);
+                    chatWithAiHorde(messages, cancelToken, callback);
+                    return;
+                }
+                if (cancelToken != null && cancelToken.isCancelled()) {
+                    AndroidUtilities.runOnUIThread(() -> callback.onResult(null, CANCELLED));
                     return;
                 }
                 JSONArray array = new JSONArray();
@@ -114,7 +137,11 @@ public final class OmmaAiClient {
                 payload.put("messages", array);
                 payload.put("temperature", (double) temperature);
 
-                String body = request(normalize(baseUrl) + "/chat/completions", apiKey, payload.toString());
+                String body = request(normalize(baseUrl) + "/chat/completions", apiKey, payload.toString(), "Authorization", cancelToken);
+                if (cancelToken != null && cancelToken.isCancelled()) {
+                    AndroidUtilities.runOnUIThread(() -> callback.onResult(null, CANCELLED));
+                    return;
+                }
                 JSONArray choices = new JSONObject(body).optJSONArray("choices");
                 String answer = "";
                 if (choices != null && choices.length() > 0) {
@@ -130,13 +157,19 @@ public final class OmmaAiClient {
                     AndroidUtilities.runOnUIThread(() -> callback.onResult(result, null));
                 }
             } catch (Exception e) {
-                String error = describe(e);
+                String error = cancelToken != null && cancelToken.isCancelled() ? CANCELLED : describe(e);
                 AndroidUtilities.runOnUIThread(() -> callback.onResult(null, error));
             }
         });
     }
 
-    private static void chatWithAiHorde(List<Message> messages, Callback<String> callback) throws Exception {
+    public static void chat(List<Message> messages, Callback<String> callback) {
+        chat(messages, null, callback);
+    }
+
+    public static final String CANCELLED = "cancelled";
+
+    private static void chatWithAiHorde(List<Message> messages, CancelToken cancelToken, Callback<String> callback) throws Exception {
         StringBuilder prompt = new StringBuilder();
         for (Message message : messages) {
             prompt.append(message.role).append(": ").append(message.content).append("\n");
@@ -150,15 +183,23 @@ public final class OmmaAiClient {
         params.put("temperature", (double) OmmaAiConfig.temperature);
         payload.put("params", params);
 
-        String requestBody = request("https://aihorde.net/api/v2/generate/text/async", "0000000000", payload.toString(), "apikey");
+        String requestBody = request("https://aihorde.net/api/v2/generate/text/async", "0000000000", payload.toString(), "apikey", cancelToken);
         String id = new JSONObject(requestBody).optString("id");
         if (TextUtils.isEmpty(id)) {
             throw new IOException("AI Horde не вернул id запроса");
         }
         long deadline = System.currentTimeMillis() + 120_000L;
         while (System.currentTimeMillis() < deadline) {
+            if (cancelToken != null && cancelToken.isCancelled()) {
+                // Best effort: tell the Horde the job is no longer needed.
+                try {
+                    request("https://aihorde.net/api/v2/generate/text/status/" + id, "", null, "Authorization", cancelToken, "DELETE");
+                } catch (Exception ignored) {
+                }
+                throw new IOException(CANCELLED);
+            }
             Thread.sleep(2500L);
-            String statusBody = request("https://aihorde.net/api/v2/generate/text/status/" + id, "", null);
+            String statusBody = request("https://aihorde.net/api/v2/generate/text/status/" + id, "", null, "Authorization", cancelToken);
             JSONObject status = new JSONObject(statusBody);
             if (status.optBoolean("done")) {
                 JSONArray generations = status.optJSONArray("generations");
@@ -188,10 +229,18 @@ public final class OmmaAiClient {
     }
 
     private static String request(String url, String apiKey, String jsonBody) throws IOException {
-        return request(url, apiKey, jsonBody, "Authorization");
+        return request(url, apiKey, jsonBody, "Authorization", null);
     }
 
     private static String request(String url, String apiKey, String jsonBody, String keyHeader) throws IOException {
+        return request(url, apiKey, jsonBody, keyHeader, null);
+    }
+
+    private static String request(String url, String apiKey, String jsonBody, String keyHeader, CancelToken cancelToken) throws IOException {
+        return request(url, apiKey, jsonBody, keyHeader, cancelToken, null);
+    }
+
+    private static String request(String url, String apiKey, String jsonBody, String keyHeader, CancelToken cancelToken, String method) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -199,6 +248,9 @@ public final class OmmaAiClient {
             connection.setRequestProperty("Accept", "application/json");
             if (!TextUtils.isEmpty(apiKey)) {
                 connection.setRequestProperty(keyHeader, "Authorization".equals(keyHeader) ? "Bearer " + apiKey : apiKey);
+            }
+            if (method != null) {
+                connection.setRequestMethod(method);
             }
             if (jsonBody != null) {
                 connection.setRequestMethod("POST");
