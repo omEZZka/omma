@@ -23,7 +23,7 @@ public final class OmmaThinkingView extends LinearLayout {
 
     private static final int DOT_COUNT = 3;
     private static final int DOT_PERIOD_MS = 1400;
-    private static final int FRAME_MS = 50;
+    private static final int FRAME_MS = 90;
 
     private final DotsView dots;
     private final TextView label;

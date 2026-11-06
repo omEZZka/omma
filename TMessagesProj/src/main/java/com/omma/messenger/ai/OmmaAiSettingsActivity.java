@@ -17,15 +17,20 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.messenger.browser.Browser;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Settings screen of the Omma AI assistant. Changes are saved when the screen is closed. */
@@ -38,7 +43,6 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     private TextView keyLink;
     private EditText baseUrlField;
     private EditText apiKeyField;
-    private EditText modelField;
     private EditText systemPromptField;
     private TextView temperatureLabel;
     private SeekBar temperatureBar;
@@ -47,9 +51,12 @@ public class OmmaAiSettingsActivity extends BaseFragment {
     private Switch profanitySwitch;
     private Switch reasoningSwitch;
     private LinearLayout templatesLayout;
+    private LinearLayout stylesLayout;
     private String selectedProvider;
     private TextView modelsButton;
     private boolean modelsLoading;
+    private SeekBar opacityBar;
+    private TextView opacityLabel;
 
     @Override
     public View createView(Context context) {
@@ -75,9 +82,11 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         scrollView.addView(root);
 
         root.addView(buildProviderCard(context), cardParams());
+        root.addView(buildAccessCard(context), cardParams());
         root.addView(buildConversationsCard(context), cardParams());
         root.addView(buildAssistantCard(context), cardParams());
         root.addView(buildTemplatesCard(context), cardParams());
+        root.addView(buildStylesCard(context), cardParams());
 
         fragmentView = scrollView;
         return fragmentView;
@@ -110,7 +119,11 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         apiKeyField = field(context, card, "API-ключ", "sk-...", true);
         apiKeyField.setText(OmmaAiConfig.apiKey);
 
-        TextView loadModels = iconButton(context, "Загрузить модели", R.drawable.msg_download);
+        modelValue = valueRow(context, card, "Модель (список с сервера)");
+        modelValue.setOnClickListener(v -> showModelPicker());
+        updateModelValue();
+
+        TextView loadModels = iconButton(context, "Обновить список моделей", R.drawable.msg_download);
         loadModels.setOnClickListener(v -> {
             if (modelsLoading) {
                 return;
@@ -122,15 +135,9 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         modelsButton = loadModels;
         card.addView(loadModels, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 8));
 
-        modelValue = valueRow(context, card, "Модель из каталога");
-        modelValue.setOnClickListener(v -> showCatalogPicker());
-        modelField = field(context, card, "Идентификатор модели", "например, gpt-4o-mini", false);
-        modelField.setText(OmmaAiConfig.model);
-
-        hint(context, card, "Ключ хранится только на устройстве и зашифрован Android Keystore.");
+        hint(context, card, "Список моделей подтягивается с сервера провайдера и кешируется. Ключ хранится только на устройстве, зашифрованный Android Keystore.");
 
         updateProviderViews();
-        updateModelValue();
         return card;
     }
 
@@ -147,10 +154,7 @@ public class OmmaAiSettingsActivity extends BaseFragment {
             if (!TextUtils.isEmpty(provider.baseUrl)) {
                 baseUrlField.setText(provider.baseUrl);
             }
-            if (!OmmaAiConfig.getModelCatalog(provider.id).isEmpty()) {
-                OmmaAiConfig.ModelOption first = OmmaAiConfig.getModelCatalog(provider.id).get(0);
-                modelField.setText(first.id);
-            }
+            OmmaAiConfig.model = "";
             updateProviderViews();
             updateModelValue();
         });
@@ -187,7 +191,7 @@ public class OmmaAiSettingsActivity extends BaseFragment {
                 return;
             }
             OmmaAiConfig.saveDiscoveredModels(selectedProvider, models);
-            showModelPicker(models);
+            showModelPicker();
         });
     }
 
@@ -198,7 +202,7 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         buttonView.setCompoundDrawablesWithIntrinsicBounds(
             loading ? 0 : R.drawable.msg_download, 0, 0, 0);
         buttonView.setCompoundDrawablePadding(AndroidUtilities.dp(6));
-        buttonView.setText(loading ? "Загружаю…" : "Загрузить модели");
+        buttonView.setText(loading ? "Загружаю…" : "Обновить список моделей");
         buttonView.setAlpha(loading ? 0.65f : 1f);
     }
 
@@ -209,62 +213,122 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         return view;
     }
 
-    private void showModelPicker(List<String> models) {
-        java.util.ArrayList<String> allModels = new java.util.ArrayList<>();
-        for (OmmaAiConfig.ModelOption option : OmmaAiConfig.getModelCatalog(selectedProvider)) {
-            allModels.add(option.id);
+    /** Only live models: cached list from /models of the connected provider. */
+    private void showModelPicker() {
+        List<String> models = OmmaAiConfig.getDiscoveredModels(selectedProvider);
+        if (models.isEmpty()) {
+            toast("Сначала обнови список моделей по своему ключу");
+            return;
         }
-        for (String model : OmmaAiConfig.getDiscoveredModels(selectedProvider)) {
-            if (!allModels.contains(model)) {
-                allModels.add(model);
-            }
-        }
-        for (String model : models) {
-            if (!allModels.contains(model)) {
-                allModels.add(model);
-            }
-        }
-        CharSequence[] items = allModels.toArray(new CharSequence[0]);
+        CharSequence[] items = models.toArray(new CharSequence[0]);
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle("Моделей: " + allModels.size());
+        builder.setTitle("Моделей: " + models.size());
         builder.setItems(items, (dialog, which) -> {
-            modelField.setText(allModels.get(which));
+            OmmaAiConfig.model = models.get(which);
             updateModelValue();
         });
-        showDialog(builder.create());
-    }
-
-    private void showCatalogPicker() {
-        List<OmmaAiConfig.ModelOption> catalog = OmmaAiConfig.getModelCatalog();
-        CharSequence[] items = new CharSequence[catalog.size()];
-        for (int i = 0; i < catalog.size(); i++) {
-            OmmaAiConfig.ModelOption option = catalog.get(i);
-            String badge = option.free ? " · бесплатно" : "";
-            String key = option.requiresApiKey ? " · ключ" : " · без ключа";
-            items[i] = option.title + badge + key + "\n" + option.id;
-        }
-        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle("Каталог моделей");
-        builder.setItems(items, (dialog, which) -> {
-            OmmaAiConfig.ModelOption option = catalog.get(which);
-            selectedProvider = option.provider;
-            OmmaAiConfig.Provider provider = OmmaAiConfig.findProvider(option.provider);
-            if (!TextUtils.isEmpty(provider.baseUrl)) {
-                baseUrlField.setText(provider.baseUrl);
-            }
-            modelField.setText(option.id);
-            updateProviderViews();
-            updateModelValue();
-        });
+        builder.setNegativeButton("Отмена", null);
         showDialog(builder.create());
     }
 
     private void updateModelValue() {
-        if (modelValue == null || modelField == null) {
+        if (modelValue == null) {
             return;
         }
-        OmmaAiConfig.ModelOption selected = OmmaAiConfig.findModel(selectedProvider, modelField.getText().toString().trim());
-        modelValue.setText(selected == null ? "Выбрать из постоянного каталога" : selected.title);
+        List<String> models = OmmaAiConfig.getDiscoveredModels(selectedProvider);
+        if (TextUtils.isEmpty(OmmaAiConfig.model)) {
+            modelValue.setText(models.isEmpty() ? "Нет списка — обнови по ключу" : "Выбрать модель (" + models.size() + ")");
+        } else {
+            modelValue.setText(OmmaAiConfig.model);
+        }
+    }
+
+    // ---------- chat access ----------
+
+    private View buildAccessCard(Context context) {
+        LinearLayout card = card(context, "Доступ к чатам");
+
+        TextView modeValue = valueRow(context, card, "Какие чаты видит ассистент");
+        int currentIndex = accessIndex(OmmaAiConfig.chatAccessMode);
+        modeValue.setText(OmmaAiConfig.ACCESS_TITLES[Math.max(0, currentIndex)]);
+        modeValue.setOnClickListener(v -> {
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+            builder.setTitle("Какие чаты видит ассистент");
+            builder.setItems(OmmaAiConfig.ACCESS_TITLES, (dialog, which) -> {
+                OmmaAiConfig.chatAccessMode = which == 0 ? OmmaAiConfig.ACCESS_ALL
+                    : which == 1 ? OmmaAiConfig.ACCESS_ALLOW : OmmaAiConfig.ACCESS_DENY;
+                modeValue.setText(OmmaAiConfig.ACCESS_TITLES[which]);
+                OmmaAiConfig.save();
+            });
+            showDialog(builder.create());
+        });
+
+        TextView allowButton = button(context, "Выбранные чаты (" + OmmaAiConfig.chatAllowList.size() + ")");
+        allowButton.setOnClickListener(v -> pickDialogs("Разрешить чаты", OmmaAiConfig.chatAllowList, allowButton));
+        card.addView(allowButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 6, 0, 6));
+
+        TextView denyButton = button(context, "Исключённые чаты (" + OmmaAiConfig.chatDenyList.size() + ")");
+        denyButton.setOnClickListener(v -> pickDialogs("Исключить чаты", OmmaAiConfig.chatDenyList, denyButton));
+        card.addView(denyButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 8));
+
+        hint(context, card, "Ассистент может читать и искать по чатам только в рамках этого режима. По умолчанию — все чаты аккаунта.");
+        return card;
+    }
+
+    private int accessIndex(String mode) {
+        if (OmmaAiConfig.ACCESS_ALLOW.equals(mode)) {
+            return 1;
+        }
+        return OmmaAiConfig.ACCESS_DENY.equals(mode) ? 2 : 0;
+    }
+
+    private void pickDialogs(String title, ArrayList<String> target, TextView buttonView) {
+        AccountInstance account = AccountInstance.getInstance(UserConfig.getInstance(UserConfig.selectedAccount).getCurrentAccount());
+        ArrayList<TLRPC.Dialog> dialogs = new ArrayList<>(account.getMessagesController().allDialogs);
+        if (dialogs.isEmpty()) {
+            toast("Список чатов ещё не загружен");
+            return;
+        }
+        CharSequence[] names = new CharSequence[dialogs.size()];
+        boolean[] checked = new boolean[dialogs.size()];
+        for (int i = 0; i < dialogs.size(); i++) {
+            TLRPC.Dialog dialog = dialogs.get(i);
+            names[i] = dialogTitle(account, dialog.id);
+            checked[i] = target.contains(String.valueOf(dialog.id));
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(title);
+        builder.setMultiChoiceItems(names, checked, (dialog, which, isChecked) -> {
+            String id = String.valueOf(dialogs.get(which).id);
+            if (isChecked) {
+                if (!target.contains(id)) {
+                    target.add(id);
+                }
+            } else {
+                target.remove(id);
+            }
+        });
+        builder.setPositiveButton("Готово", (dialog, which) -> {
+            OmmaAiConfig.save();
+            if (buttonView != null) {
+                buttonView.setText(buttonView.getText().toString().replaceAll("\\(\\d+\\)", "(" + target.size() + ")"));
+            }
+        });
+        builder.setNegativeButton("Отмена", (dialog, which) -> OmmaAiConfig.load());
+        showDialog(builder.create());
+    }
+
+    private static String dialogTitle(AccountInstance account, long dialogId) {
+        try {
+            if (dialogId > 0) {
+                TLRPC.User user = account.getMessagesController().getUser(dialogId);
+                return user != null ? UserObject.getUserName(user) : ("user" + dialogId);
+            }
+            TLRPC.Chat chat = account.getMessagesController().getChat(-dialogId);
+            return chat != null && !TextUtils.isEmpty(chat.title) ? chat.title : ("chat" + dialogId);
+        } catch (Exception e) {
+            return "чат " + dialogId;
+        }
     }
 
     // ---------- assistant ----------
@@ -333,6 +397,28 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         profanitySwitch = toggle(context, card, "Разрешить ассистенту материться", OmmaAiConfig.allowProfanity);
         reasoningSwitch = toggle(context, card, "Показывать рассуждения модели", OmmaAiConfig.showReasoning);
 
+        opacityLabel = label(context, card, "");
+        opacityBar = new SeekBar(context);
+        opacityBar.setMax(100);
+        opacityBar.setProgress(OmmaAiConfig.chatOpacityPercent);
+        opacityBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                updateOpacityLabel();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        card.addView(opacityBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 8));
+        updateOpacityLabel();
+        hint(context, card, "Прозрачность чата ассистента: меньше — стекляннее, видно какой чат открыт.");
+
         TextView learned = new TextView(context);
         learned.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         learned.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
@@ -345,6 +431,101 @@ public class OmmaAiSettingsActivity extends BaseFragment {
 
     private void updateTemperatureLabel() {
         temperatureLabel.setText(String.format(java.util.Locale.US, "Температура: %.1f", temperatureBar.getProgress() / 10f));
+    }
+
+    private void updateOpacityLabel() {
+        opacityLabel.setText("Прозрачность чата: " + opacityBar.getProgress() + "%");
+    }
+
+    // ---------- custom styles ----------
+
+    private View buildStylesCard(Context context) {
+        LinearLayout card = card(context, "Стили сообщений");
+        hint(context, card, "Встроенные: Деловой, Коротко, Церковный, Викингский. Ниже — свои стили, они появляются в меню отправки и «Предложить ответ».");
+
+        stylesLayout = new LinearLayout(context);
+        stylesLayout.setOrientation(LinearLayout.VERTICAL);
+        card.addView(stylesLayout);
+        renderCustomStyles();
+
+        TextView add = button(context, "+ Новый стиль");
+        add.setOnClickListener(v -> showAddStyleDialog());
+        card.addView(add, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+        return card;
+    }
+
+    private void showAddStyleDialog() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        if (OmmaAiConfig.customStyles.size() >= 10) {
+            toast("Максимум 10 своих стилей");
+            return;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle("Новый стиль");
+        LinearLayout container = new LinearLayout(getParentActivity());
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(AndroidUtilities.dp(20), AndroidUtilities.dp(10), AndroidUtilities.dp(20), 0);
+
+        final EditText titleInput = new EditText(getParentActivity());
+        titleInput.setHint("Название (например: Пиратский)");
+        titleInput.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        container.addView(titleInput);
+
+        final EditText instructionInput = new EditText(getParentActivity());
+        instructionInput.setHint("Инструкция для модели (как писать)");
+        instructionInput.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        instructionInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        instructionInput.setMinLines(3);
+        instructionInput.setGravity(Gravity.TOP | Gravity.LEFT);
+        container.addView(instructionInput);
+
+        builder.setView(container);
+        builder.setPositiveButton("Создать", (dialog, which) -> {
+            if (!OmmaAiConfig.addCustomStyle(
+                titleInput.getText().toString().trim(),
+                instructionInput.getText().toString().trim())) {
+                toast("Заполни название и инструкцию");
+            }
+            renderCustomStyles();
+        });
+        builder.setNegativeButton("Отмена", null);
+        showDialog(builder.create());
+    }
+
+    private void renderCustomStyles() {
+        if (stylesLayout == null) {
+            return;
+        }
+        Context context = stylesLayout.getContext();
+        stylesLayout.removeAllViews();
+        for (OmmaAiConfig.Style style : new ArrayList<>(OmmaAiConfig.customStyles)) {
+            LinearLayout item = new LinearLayout(context);
+            item.setOrientation(LinearLayout.HORIZONTAL);
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(8), AndroidUtilities.dp(10), AndroidUtilities.dp(8));
+            item.setBackground(rounded(Theme.getColor(Theme.key_windowBackgroundGray), 12));
+
+            TextView name = new TextView(context);
+            name.setText(style.title + "\n" + style.instruction);
+            name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+            name.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            item.addView(name, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+
+            TextView delete = new TextView(context);
+            delete.setText("Удалить");
+            delete.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+            delete.setTextColor(0xFFE53935);
+            delete.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(6), AndroidUtilities.dp(4), AndroidUtilities.dp(6));
+            delete.setOnClickListener(v -> {
+                OmmaAiConfig.removeCustomStyle(style);
+                renderCustomStyles();
+            });
+            item.addView(delete);
+
+            stylesLayout.addView(item, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 6));
+        }
     }
 
     // ---------- templates ----------
@@ -428,9 +609,11 @@ public class OmmaAiSettingsActivity extends BaseFragment {
         OmmaAiConfig.provider = selectedProvider;
         OmmaAiConfig.baseUrl = baseUrlField.getText().toString().trim();
         OmmaAiConfig.apiKey = apiKeyField.getText().toString().trim();
-        OmmaAiConfig.model = modelField.getText().toString().trim();
         OmmaAiConfig.systemPrompt = systemPromptField.getText().toString();
         OmmaAiConfig.temperature = temperatureBar.getProgress() / 10f;
+        if (opacityBar != null) {
+            OmmaAiConfig.chatOpacityPercent = opacityBar.getProgress();
+        }
         OmmaAiConfig.useContext = contextSwitch.isChecked();
         OmmaAiConfig.fabEnabled = fabSwitch.isChecked();
         OmmaAiConfig.allowProfanity = profanitySwitch.isChecked();

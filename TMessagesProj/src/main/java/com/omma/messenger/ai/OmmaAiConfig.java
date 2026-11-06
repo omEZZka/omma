@@ -10,7 +10,6 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /** Persistent settings of the Omma AI assistant. The API key is encrypted with Android Keystore. */
@@ -36,30 +35,6 @@ public final class OmmaAiConfig {
         }
     }
 
-    /** A stable built-in model entry. It remains available even when a provider is offline. */
-    public static final class ModelOption {
-        public final String provider;
-        public final String id;
-        public final String title;
-        public final String description;
-        public final boolean free;
-        public final boolean requiresApiKey;
-
-        ModelOption(String provider, String id, String title, String description, boolean free, boolean requiresApiKey) {
-            this.provider = provider;
-            this.id = id;
-            this.title = title;
-            this.description = description;
-            this.free = free;
-            this.requiresApiKey = requiresApiKey;
-        }
-
-        @Override
-        public String toString() {
-            return title + " — " + id;
-        }
-    }
-
     public static final class Template {
         public String name;
         public String prompt;
@@ -67,6 +42,21 @@ public final class OmmaAiConfig {
         public Template(String name, String prompt) {
             this.name = name;
             this.prompt = prompt;
+        }
+    }
+
+    /** Named rewrite style: built-in or user-created (like re:gram AI Editor styles). */
+    public static final class Style {
+        public final String id;
+        public final String title;
+        public final String instruction;
+        public final boolean builtIn;
+
+        public Style(String id, String title, String instruction, boolean builtIn) {
+            this.id = id;
+            this.title = title;
+            this.instruction = instruction;
+            this.builtIn = builtIn;
         }
     }
 
@@ -84,65 +74,27 @@ public final class OmmaAiConfig {
         new Provider(PROVIDER_CUSTOM, "Свой сервер (OpenAI-совместимый)", "", ""),
     };
 
-    /**
-     * Built-in catalog. Entries are intentionally not replaced by /models: this is the
-     * always-visible list for offline providers and providers whose /models endpoint is limited.
-     * "Free" means a provider's free tier, not an anonymous cloud API.
-     */
-    private static final ModelOption[] BUILT_IN_MODELS = {
-        new ModelOption("openai", "gpt-4o-mini", "GPT-4o mini", "Быстрая модель OpenAI", false, true),
-        new ModelOption("openai", "gpt-4.1-mini", "GPT-4.1 mini", "Сильнее для текста и кода", false, true),
-        new ModelOption("deepseek", "deepseek-chat", "DeepSeek V3", "Недорогая универсальная модель", false, true),
-        new ModelOption("deepseek", "deepseek-reasoner", "DeepSeek Reasoner", "Рассуждения и сложные задачи", false, true),
-        new ModelOption("groq", "llama-3.3-70b-versatile", "Llama 3.3 70B (Groq)", "Бесплатный тариф Groq, нужен ключ", true, true),
-        new ModelOption("groq", "llama-3.1-8b-instant", "Llama 3.1 8B (Groq)", "Очень быстрая, бесплатный тариф Groq", true, true),
-        new ModelOption("groq", "qwen/qwen3-32b", "Qwen3 32B (Groq)", "Бесплатный тариф Groq, нужен ключ", true, true),
-        new ModelOption("openrouter", "meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B (free)", "Бесплатный маршрут OpenRouter, нужен ключ", true, true),
-        new ModelOption("openrouter", "deepseek/deepseek-r1:free", "DeepSeek R1 (free)", "Бесплатный маршрут OpenRouter, нужен ключ", true, true),
-        new ModelOption("openrouter", "google/gemini-2.0-flash-exp:free", "Gemini Flash (free)", "Бесплатный маршрут OpenRouter, нужен ключ", true, true),
-        new ModelOption("openrouter", "qwen/qwen-2.5-72b-instruct:free", "Qwen 2.5 72B (free)", "Бесплатный маршрут OpenRouter, нужен ключ", true, true),
-        new ModelOption("ollama", "llama3.2", "Llama 3.2 (локально)", "Без API-ключа; нужен запущенный Ollama", true, false),
-        new ModelOption("ollama", "qwen2.5:7b", "Qwen 2.5 7B (локально)", "Без API-ключа; модель скачивается в Ollama", true, false),
-        new ModelOption("ollama", "gemma3:4b", "Gemma 3 4B (локально)", "Без API-ключа; нужен запущенный Ollama", true, false),
-        new ModelOption("lmstudio", "local-model", "Текущая модель LM Studio", "Без API-ключа; имя модели задаётся в LM Studio", true, false),
-        new ModelOption("aihorde", "koboldcpp/gemma-4-31B-it-heretic", "Gemma 4 31B (AI Horde)", "Бесплатно, без ключа; очередь зависит от волонтёров", true, false),
-        new ModelOption("aihorde", "koboldcpp/Qwen3-4B", "Qwen 3 4B (AI Horde)", "Бесплатно, без ключа; очередь зависит от волонтёров", true, false),
-        new ModelOption("pollinations", "openai/gpt-oss-20b", "GPT OSS 20B (Pollinations)", "У Pollinations есть бесплатные лимиты/тарифы, ключ нужен", true, true),
-        new ModelOption("pollinations", "qwen/qwen3-coder-30b-a3b-instruct", "Qwen Coder (Pollinations)", "Для кода; ключ Pollinations нужен", true, true),
-    };
-
     public static final String DEFAULT_SYSTEM_PROMPT =
         "Ты — Omma, встроенный ИИ-ассистент мессенджера. Отвечай кратко и по делу, на языке пользователя. Если дан контекст чата — учитывай его. "
         + "Если пользователь попросил запомнить предпочтение (стиль, тон, обращения) — кратко подтверди это отдельной строкой вида «Запомнила: …».";
 
-    /** Named rewrite styles available from the send-button dropdown and the answer picker. */
-    public static final class Style {
-        public final String id;
-        public final String title;
-        public final String instruction;
-
-        public Style(String id, String title, String instruction) {
-            this.id = id;
-            this.title = title;
-            this.instruction = instruction;
-        }
-    }
-
-    public static final Style[] STYLES = {
-        new Style("business", "Деловой", "Перепиши текст в строго деловом стиле: нейтрально, вежливо, без сленга и эмодзи."),
-        new Style("short", "Коротко", "Сожми текст до одной-двух коротких фраз. Убери всё второстепенное."),
-        new Style("church", "Церковный/библейский", "Перепиши текст в стиле церковнославянской и библейской речи: торжественно, с архаичными оборотами («о, да», «воистину», «.Inner аще»), без кощунства."),
-        new Style("viking", "Скандинавский/викингский", "Перепиши текст речью викинга: суровые образы саг, море, путь, руны, обращение к собеседнику как к воину."),
+    private static final Style[] BUILT_IN_STYLES = {
+        new Style("business", "Деловой", "Перепиши текст в строго деловом стиле: нейтрально, вежливо, без сленга и эмодзи.", true),
+        new Style("short", "Коротко", "Сожми текст до одной-двух коротких фраз. Убери всё второстепенное.", true),
+        new Style("church", "Церковный/библейский", "Перепиши текст в стиле церковнославянской и библейской речи: торжественно, с архаичными оборотами («воистину», «аще», «о, да»), без кощунства.", true),
+        new Style("viking", "Скандинавский/викингский", "Перепиши текст речью викинга: суровые образы саг, море, путь, руны, обращение к собеседнику как к воину.", true),
     };
 
-    public static Style findStyle(String id) {
-        for (Style style : STYLES) {
-            if (style.id.equals(id)) {
-                return style;
-            }
-        }
-        return null;
-    }
+    /** Chat access modes for the assistant's read tools. */
+    public static final String ACCESS_ALL = "all";
+    public static final String ACCESS_ALLOW = "allow";
+    public static final String ACCESS_DENY = "deny";
+
+    public static final String[] ACCESS_TITLES = {
+        "Доступ ко всем чатам",
+        "Только выбранные чаты",
+        "Все чаты, кроме выбранных",
+    };
 
     private static final String PREFS_NAME = "omma_ai";
     private static final float DEFAULT_TEMPERATURE = 0.7f;
@@ -157,12 +109,21 @@ public final class OmmaAiConfig {
     public static boolean fabEnabled;
     public static boolean allowProfanity;
     public static boolean showReasoning;
+    /** 0 = fully transparent, 100 = fully opaque. Applies to the assistant chat surfaces. */
+    public static int chatOpacityPercent;
+    /** ACCESS_ALL / ACCESS_ALLOW / ACCESS_DENY. */
+    public static String chatAccessMode;
+    /** Dialog ids (as strings) for allow/deny modes. */
+    public static final ArrayList<String> chatAllowList = new ArrayList<>();
+    public static final ArrayList<String> chatDenyList = new ArrayList<>();
     /** Extra instructions the assistant learns from conversations, shown in settings. */
     public static String learnedPreferences;
     /** Saved button position as a fraction of the container, -1 means default. */
     public static float fabX;
     public static float fabY;
     public static final ArrayList<Template> templates = new ArrayList<>();
+    /** User-created styles, persisted separately from the built-in ones. */
+    public static final ArrayList<Style> customStyles = new ArrayList<>();
 
     static {
         load();
@@ -194,9 +155,16 @@ public final class OmmaAiConfig {
         fabEnabled = p.getBoolean("fabEnabled", true);
         allowProfanity = p.getBoolean("allowProfanity", false);
         showReasoning = p.getBoolean("showReasoning", false);
+        chatOpacityPercent = p.getInt("chatOpacityPercent", 78);
+        chatAccessMode = p.getString("chatAccessMode", ACCESS_ALL);
         learnedPreferences = p.getString("learnedPreferences", "");
         fabX = p.getFloat("fabX", -1f);
         fabY = p.getFloat("fabY", -1f);
+
+        chatAllowList.clear();
+        chatDenyList.clear();
+        loadList(p, "chatAllowList", chatAllowList);
+        loadList(p, "chatDenyList", chatDenyList);
 
         templates.clear();
         String raw = p.getString("templates", null);
@@ -207,13 +175,57 @@ public final class OmmaAiConfig {
                     JSONObject item = array.getJSONObject(i);
                     templates.add(new Template(item.optString("name"), item.optString("prompt")));
                 }
-                return;
             } catch (Exception e) {
                 FileLog.e(e);
                 templates.clear();
+                addDefaultTemplates();
+            }
+        } else {
+            addDefaultTemplates();
+        }
+
+        customStyles.clear();
+        String stylesRaw = p.getString("customStyles", null);
+        if (stylesRaw != null) {
+            try {
+                JSONArray array = new JSONArray(stylesRaw);
+                for (int i = 0; i < array.length(); i++) {
+                    JSONObject item = array.getJSONObject(i);
+                    customStyles.add(new Style("user_" + i, item.optString("title"), item.optString("instruction"), false));
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+                customStyles.clear();
             }
         }
-        addDefaultTemplates();
+    }
+
+    private static void loadList(SharedPreferences p, String key, ArrayList<String> target) {
+        String raw = p.getString(key, null);
+        if (raw == null) {
+            return;
+        }
+        try {
+            JSONArray array = new JSONArray(raw);
+            for (int i = 0; i < array.length(); i++) {
+                String value = array.optString(i);
+                if (!TextUtils.isEmpty(value)) {
+                    target.add(value);
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private static void saveList(SharedPreferences.Editor editor, String key, ArrayList<String> source) {
+        JSONArray array = new JSONArray();
+        for (String item : source) {
+            if (!TextUtils.isEmpty(item)) {
+                array.put(item);
+            }
+        }
+        editor.putString(key, array.toString());
     }
 
     private static void addDefaultTemplates() {
@@ -234,13 +246,24 @@ public final class OmmaAiConfig {
         } catch (Exception e) {
             FileLog.e(e);
         }
+        JSONArray stylesArray = new JSONArray();
+        try {
+            for (Style style : customStyles) {
+                JSONObject item = new JSONObject();
+                item.put("title", style.title);
+                item.put("instruction", style.instruction);
+                stylesArray.put(item);
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
         String encryptedKey = OmmaSecureStore.encrypt(apiKey);
         if (encryptedKey == null) {
             // Keystore unavailable on this device: keep the assistant working with the plain value.
             encryptedKey = apiKey;
         }
-        prefs().edit()
-            .putString("provider", provider)
+        SharedPreferences.Editor editor = prefs().edit();
+        editor.putString("provider", provider)
             .putString("baseUrl", baseUrl)
             .putString("apiKey", encryptedKey)
             .putString("model", model)
@@ -250,11 +273,16 @@ public final class OmmaAiConfig {
             .putBoolean("fabEnabled", fabEnabled)
             .putBoolean("allowProfanity", allowProfanity)
             .putBoolean("showReasoning", showReasoning)
+            .putInt("chatOpacityPercent", chatOpacityPercent)
+            .putString("chatAccessMode", chatAccessMode)
             .putString("learnedPreferences", learnedPreferences)
             .putFloat("fabX", fabX)
             .putFloat("fabY", fabY)
             .putString("templates", array.toString())
-            .apply();
+            .putString("customStyles", stylesArray.toString());
+        saveList(editor, "chatAllowList", chatAllowList);
+        saveList(editor, "chatDenyList", chatDenyList);
+        editor.apply();
     }
 
     public static void saveFabPosition(float x, float y) {
@@ -294,22 +322,6 @@ public final class OmmaAiConfig {
         return findProvider(providerId).requiresApiKey;
     }
 
-    public static List<ModelOption> getModelCatalog() {
-        ArrayList<ModelOption> result = new ArrayList<>();
-        Collections.addAll(result, BUILT_IN_MODELS);
-        return result;
-    }
-
-    public static List<ModelOption> getModelCatalog(String providerId) {
-        ArrayList<ModelOption> result = new ArrayList<>();
-        for (ModelOption option : BUILT_IN_MODELS) {
-            if (option.provider.equals(providerId)) {
-                result.add(option);
-            }
-        }
-        return result;
-    }
-
     public static void saveDiscoveredModels(String providerId, List<String> models) {
         if (TextUtils.isEmpty(providerId) || models == null) {
             return;
@@ -343,13 +355,37 @@ public final class OmmaAiConfig {
         return result;
     }
 
-    public static ModelOption findModel(String providerId, String modelId) {
-        for (ModelOption option : BUILT_IN_MODELS) {
-            if (option.provider.equals(providerId) && option.id.equals(modelId)) {
-                return option;
+    /** Built-in + user styles in menu order. */
+    public static ArrayList<Style> allStyles() {
+        ArrayList<Style> result = new ArrayList<>();
+        for (Style style : BUILT_IN_STYLES) {
+            result.add(style);
+        }
+        result.addAll(customStyles);
+        return result;
+    }
+
+    public static Style findStyle(String id) {
+        for (Style style : allStyles()) {
+            if (style.id.equals(id)) {
+                return style;
             }
         }
         return null;
+    }
+
+    public static boolean addCustomStyle(String title, String instruction) {
+        if (TextUtils.isEmpty(title) || TextUtils.isEmpty(instruction) || customStyles.size() >= 10) {
+            return false;
+        }
+        customStyles.add(new Style("user_" + customStyles.size(), title, instruction, false));
+        save();
+        return true;
+    }
+
+    public static void removeCustomStyle(Style style) {
+        customStyles.remove(style);
+        save();
     }
 
     public static Provider findProvider(String id) {

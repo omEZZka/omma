@@ -69,6 +69,7 @@ public class OmmaAiChatActivity extends BaseFragment {
 
     private OmmaAiHistory.Conversation conversation;
     private boolean busy;
+    private int renderedCount;
     private ActionBarMenuSubItem reasoningItem;
 
     public OmmaAiChatActivity() {
@@ -201,7 +202,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         }
 
         FrameLayout root = new FrameLayout(context);
-        root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        root.setBackground(translucentBackground(context));
 
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -235,6 +236,16 @@ public class OmmaAiChatActivity extends BaseFragment {
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         OmmaAiEngine.get().setListener(null);
+    }
+
+    /** Glassy background: theme color with a user-controlled alpha so the open chat shows through. */
+    private static android.graphics.drawable.Drawable translucentBackground(Context context) {
+        int base = Theme.getColor(Theme.key_windowBackgroundWhite);
+        int alpha = Math.round(255f * Math.max(0f, Math.min(1f, OmmaAiConfig.chatOpacityPercent / 100f)));
+        int color = (alpha << 24) | (base & 0x00FFFFFF);
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        return drawable;
     }
 
     private View buildInputRow(Context context) {
@@ -271,6 +282,18 @@ public class OmmaAiChatActivity extends BaseFragment {
         sendButton.setBackground(rounded(ACCENT, 22));
         sendButton.setOnClickListener(v -> showSendMenu());
         row.addView(sendButton, LayoutHelper.createLinear(44, 44, 0f, 8, 0, 0, 0));
+
+        // Quick templates: a lightning icon next to the input, list pops up on tap.
+        TextView templatesButton = new TextView(context);
+        templatesButton.setText("⚡");
+        templatesButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
+        templatesButton.setGravity(Gravity.CENTER);
+        templatesButton.setTextColor(ACCENT);
+        GradientDrawable pill = rounded(0x1A2563EB, 22);
+        pill.setStroke(AndroidUtilities.dp(1), 0x552563EB);
+        templatesButton.setBackground(pill);
+        templatesButton.setOnClickListener(v -> showPromptsMenu());
+        row.addView(templatesButton, LayoutHelper.createLinear(44, 44, 4f, 8, 0, 0, 0));
         return row;
     }
 
@@ -281,32 +304,31 @@ public class OmmaAiChatActivity extends BaseFragment {
             AndroidUtilities.shakeView(sendButton);
             return;
         }
-        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle("Отправить в стиле");
-        CharSequence[] items = new CharSequence[OmmaAiConfig.STYLES.length + 1];
-        items[0] = "Как написано";
-        for (int i = 0; i < OmmaAiConfig.STYLES.length; i++) {
-            items[i + 1] = OmmaAiConfig.STYLES[i].title;
-        }
-        builder.setItems(items, (dialog, which) -> {
-            String textToSend = text;
-            String displayed = text;
-            if (which > 0) {
-                OmmaAiConfig.Style style = OmmaAiConfig.STYLES[which - 1];
-                textToSend = "[Стиль: " + style.title + "]\nПерепиши следующее сообщение в этом стиле и верни только результат:\n" + text;
-                displayed = text;
-            }
-            input.setText("");
-            if (which > 0) {
-                // Style rewrite runs as a normal prompt; the answer lands in the conversation.
-                send(displayed, textToSend);
-            } else {
-                send(displayed, displayed);
-            }
-        });
         if (notAttached()) {
             return;
         }
+        ArrayList<OmmaAiConfig.Style> styles = OmmaAiConfig.allStyles();
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle("Отправить в стиле");
+        CharSequence[] items = new CharSequence[styles.size() + 1];
+        items[0] = "Как написано";
+        for (int i = 0; i < styles.size(); i++) {
+            items[i + 1] = styles.get(i).title;
+        }
+        builder.setItems(items, (dialog, which) -> {
+            input.setText("");
+            if (which == 0) {
+                send(text, text);
+            } else {
+                OmmaAiConfig.Style style = styles.get(which - 1);
+                send(text, "[Стиль: " + style.title + "]\n" + style.instruction
+                    + "\nПерепиши следующее сообщение в этом стиле и верни только результат:\n" + text);
+            }
+        });
+        builder.setNegativeButton("Просто отправить", (dialog, which) -> {
+            input.setText("");
+            send(text, text);
+        });
         showDialog(builder.create());
     }
 
@@ -352,6 +374,7 @@ public class OmmaAiChatActivity extends BaseFragment {
             return;
         }
         messagesLayout.removeAllViews();
+        renderedCount = 0;
         for (OmmaAiHistory.Entry entry : conversation.entries) {
             boolean user = "user".equals(entry.role);
             if (user) {
@@ -369,6 +392,7 @@ public class OmmaAiChatActivity extends BaseFragment {
                 }
             }
         }
+        renderedCount = conversation.entries.size();
         updateEmptyState();
         scrollToBottom();
     }
@@ -614,17 +638,17 @@ public class OmmaAiChatActivity extends BaseFragment {
         if (notAttached()) {
             return;
         }
+        ArrayList<OmmaAiConfig.Style> styles = OmmaAiConfig.allStyles();
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle("Стиль ответа");
-        CharSequence[] items = new CharSequence[OmmaAiConfig.STYLES.length];
-        for (int i = 0; i < OmmaAiConfig.STYLES.length; i++) {
-            items[i] = OmmaAiConfig.STYLES[i].title;
+        CharSequence[] items = new CharSequence[styles.size()];
+        for (int i = 0; i < styles.size(); i++) {
+            items[i] = styles.get(i).title;
         }
         builder.setItems(items, (dialog, which) -> {
-            OmmaAiConfig.Style style = OmmaAiConfig.STYLES[which];
+            OmmaAiConfig.Style style = styles.get(which);
             String prompt = "Предложи ОДИН вариант ответа на последнее сообщение собеседника в стиле «" + style.title + "». "
-                + (style == null ? "" : style.instruction + " ")
-                + "Верни только текст ответа, без пояснений.";
+                + style.instruction + " Верни только текст ответа, без пояснений.";
             send("Ответ в стиле: " + style.title, prompt);
         });
         builder.setNegativeButton("Отмена", null);
@@ -697,6 +721,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         OmmaAiHistory.save(conversation);
 
         addBubble(shown, true);
+        renderedCount++;
         updateEmptyState();
 
         // The engine owns the request, so the answer keeps generating after the screen closes.
@@ -728,10 +753,31 @@ public class OmmaAiChatActivity extends BaseFragment {
             return;
         }
         OmmaAiHistory.Conversation fresh = OmmaAiHistory.load(conversation.id);
-        if (fresh != null) {
-            conversation = fresh;
+        if (fresh == null) {
+            return;
         }
-        renderConversation();
+        conversation = fresh;
+        // Append-only refresh: render only the entries that are not on screen yet.
+        for (int i = renderedCount; i < conversation.entries.size(); i++) {
+            OmmaAiHistory.Entry entry = conversation.entries.get(i);
+            if ("user".equals(entry.role)) {
+                addBubble(entry.text, true);
+            } else {
+                String[] parts = splitReasoning(entry.text);
+                if (!parts[0].isEmpty() && OmmaAiConfig.showReasoning) {
+                    addReasoningBlock(parts[0]);
+                }
+                if (!parts[1].isEmpty()) {
+                    TextView bubble = addBubble(parts[1], false);
+                    attachAnswerActions(bubble, entry.text);
+                } else if (parts[0].isEmpty()) {
+                    addBubble(entry.text, false);
+                }
+            }
+        }
+        renderedCount = conversation.entries.size();
+        updateEmptyState();
+        scrollToBottom();
     }
 
     private void setBusy(boolean value) {
