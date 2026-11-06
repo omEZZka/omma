@@ -37,7 +37,9 @@ public final class OmmaAiOverlay {
         container.addView(fab, new FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.LEFT));
         container.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fab.applyPosition());
         fabRef = new WeakReference<>(fab);
-        updateVisibility();
+        // The fragment stack is not wired up yet at this point of onCreate: reading it now
+        // crashes with an NPE. The first visibility pass runs on the next frame instead.
+        AndroidUtilities.runOnUIThread(OmmaAiOverlay::updateVisibility);
     }
 
     /** Call when the fragment stack, account or settings change. */
@@ -46,7 +48,12 @@ public final class OmmaAiOverlay {
         if (fab == null) {
             return;
         }
-        org.telegram.ui.ActionBar.BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+        org.telegram.ui.ActionBar.BaseFragment last = null;
+        try {
+            last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+        } catch (Throwable ignore) {
+            // The stack may still be uninitialized during startup or configuration changes.
+        }
         boolean aiChatOpen = last instanceof OmmaAiChatActivity;
         boolean visible = !aiChatOpen
             && OmmaAiConfig.fabEnabled
@@ -205,13 +212,17 @@ public final class OmmaAiOverlay {
         public boolean performClick() {
             super.performClick();
             android.content.Context context = getContext();
-            org.telegram.ui.ActionBar.BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
-            if (last != null) {
-                org.telegram.ui.ChatActivity chat = last instanceof org.telegram.ui.ChatActivity ? (org.telegram.ui.ChatActivity) last : null;
-                last.presentFragment(new OmmaAiChatActivity(chat));
-            } else {
-                android.widget.Toast.makeText(context, "Подожди, приложение загружается…", android.widget.Toast.LENGTH_SHORT).show();
+            try {
+                org.telegram.ui.ActionBar.BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+                if (last != null) {
+                    org.telegram.ui.ChatActivity chat = last instanceof org.telegram.ui.ChatActivity ? (org.telegram.ui.ChatActivity) last : null;
+                    last.presentFragment(new OmmaAiChatActivity(chat));
+                    return true;
+                }
+            } catch (Throwable ignore) {
+                // The stack may not be ready; fall through to the toast below.
             }
+            android.widget.Toast.makeText(context, "Подожди, приложение загружается…", android.widget.Toast.LENGTH_SHORT).show();
             return true;
         }
     }
