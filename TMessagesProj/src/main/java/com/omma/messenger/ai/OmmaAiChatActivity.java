@@ -310,6 +310,9 @@ public class OmmaAiChatActivity extends BaseFragment {
     }
 
     private TextView addBubble(String text, boolean user) {
+        if (getContext() == null || messagesLayout == null) {
+            return null;
+        }
         TextView bubble = new TextView(getContext());
         bubble.setText(text);
         bubble.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
@@ -339,12 +342,15 @@ public class OmmaAiChatActivity extends BaseFragment {
     }
 
     private void attachAnswerActions(TextView bubble, String answer) {
+        if (bubble == null) {
+            return;
+        }
         bubble.setOnLongClickListener(v -> {
             AndroidUtilities.addToClipboard(answer);
             Toast.makeText(getContext(), "Скопировано", Toast.LENGTH_SHORT).show();
             return true;
         });
-        if (chat == null) {
+        if (chat == null || messagesLayout == null) {
             return;
         }
         TextView toChat = createPill(getContext(), "В чат");
@@ -376,7 +382,14 @@ public class OmmaAiChatActivity extends BaseFragment {
         renderConversation();
     }
 
+    private boolean notAttached() {
+        return getParentActivity() == null;
+    }
+
     private void confirmClear() {
+        if (notAttached() || busy) {
+            return;
+        }
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle("Удалить историю?");
         builder.setMessage("Все диалоги ассистента будут удалены безвозвратно.");
@@ -388,7 +401,9 @@ public class OmmaAiChatActivity extends BaseFragment {
             renderConversation();
         });
         builder.setNegativeButton("Отмена", null);
-        showDialog(builder.create());
+        if (getParentActivity() != null) {
+            showDialog(builder.create());
+        }
     }
 
     /** Template prompts live in the overflow menu now, so the chat itself stays clean. */
@@ -399,8 +414,10 @@ public class OmmaAiChatActivity extends BaseFragment {
                 usable.add(template);
             }
         }
-        if (usable.isEmpty()) {
-            Toast.makeText(getContext(), "В настройках Omma AI нет шаблонов", Toast.LENGTH_SHORT).show();
+        if (usable.isEmpty() || notAttached()) {
+            if (getContext() != null) {
+                Toast.makeText(getContext(), "В настройках Omma AI нет шаблонов", Toast.LENGTH_SHORT).show();
+            }
             return;
         }
         CharSequence[] items = new CharSequence[usable.size()];
@@ -418,6 +435,9 @@ public class OmmaAiChatActivity extends BaseFragment {
     }
 
     private void openHistory() {
+        if (notAttached()) {
+            return;
+        }
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle("История диалогов");
         final ArrayList<OmmaAiHistory.Conversation> all = OmmaAiHistory.loadAll();
@@ -460,7 +480,10 @@ public class OmmaAiChatActivity extends BaseFragment {
     }
 
     private void send(String shown, String prompt) {
-        if (busy) {
+        if (busy || conversation == null) {
+            return;
+        }
+        if (getContext() == null || messagesLayout == null) {
             return;
         }
         if (!OmmaAiConfig.isConfigured()) {
@@ -508,6 +531,10 @@ public class OmmaAiChatActivity extends BaseFragment {
             if (thinkingView != null) {
                 messagesLayout.removeView(thinkingView);
                 thinkingView = null;
+            }
+            // The user may have left the screen while the model was thinking.
+            if (getContext() == null || messagesLayout == null) {
+                return;
             }
             if (error != null) {
                 addBubble("Ошибка: " + error, false);
