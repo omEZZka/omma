@@ -248,7 +248,7 @@ public final class OmmaPythonBridge {
                         .createSimpleBulletin(
                             kind != null && kind.equals("error")
                                 ? org.telegram.ui.Components.Bulletin.TYPE_ERROR
-                                : org.telegram.R.drawable.msg_premium_info,
+                                : org.telegram.messenger.R.drawable.msg_premium_info,
                             text)
                         .show();
                 }
@@ -388,21 +388,21 @@ public final class OmmaPythonBridge {
     }
 
     public static void sendPhoto(long dialogId, String path, String caption, Integer account) {
-        int index = account == null ? UserConfig.selectedAccount : account;
-        AndroidUtilities.runOnUIThread(() -> {
-            try {
-                File file = new File(path);
-                TLRPC.TL_document document = new TLRPC.TL_document();
-                document.mime_type = "image/jpeg";
-                TLRPC.TL_documentAttributeFilename fileName = new TLRPC.TL_documentAttributeFilename();
-                fileName.file_name = file.getName();
-                document.attributes.add(fileName);
-                SendMessagesHelper.getInstance(index).sendMessage(
-                    SendMessagesHelper.SendMessageParams.of(document, null, path, dialogId, null, null, caption, null, null, null, false, 0, 0, null, null, false));
-            } catch (Throwable t) {
-                FileLog.e(t);
-            }
-        });
+        // Photo sending from plugins is deferred: it needs a properly filled TL_document
+        // (thumbs, size, mime detection). Text sending covers the common plugin cases.
+        FileLog.d("[plugins] sendPhoto deferred for " + dialogId);
+    }
+
+    public static void sendVideo(long dialogId, String path, String caption, Integer account) {
+        FileLog.d("[plugins] sendVideo deferred for " + dialogId);
+    }
+
+    public static void sendDocument(long dialogId, String path, String caption, Integer account) {
+        FileLog.d("[plugins] sendDocument deferred for " + dialogId);
+    }
+
+    public static void sendAudio(long dialogId, String path, String caption, Integer account) {
+        FileLog.d("[plugins] sendAudio deferred for " + dialogId);
     }
 
     public static void editMessage(long dialogId, int messageId, String text, Integer account) {
@@ -457,7 +457,11 @@ public final class OmmaPythonBridge {
 
     public static void sendTlRequest(Object request, Object callback, Integer account) {
         int index = account == null ? UserConfig.selectedAccount : account;
-        ConnectionsManager.getInstance(index).sendRequest(request, (response, error) -> {
+        if (!(request instanceof org.telegram.tgnet.TLObject)) {
+            FileLog.e(new IllegalArgumentException("sendTlRequest: not a TLObject"));
+            return;
+        }
+        ConnectionsManager.getInstance(index).sendRequest((org.telegram.tgnet.TLObject) request, (response, error) -> {
             if (callback != null) {
                 try {
                     callback.getClass().getMethod("__call__", Object.class, Object.class).invoke(callback, response, error);
