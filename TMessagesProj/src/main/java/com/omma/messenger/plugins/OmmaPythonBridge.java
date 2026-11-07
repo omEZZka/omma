@@ -244,12 +244,11 @@ public final class OmmaPythonBridge {
             try {
                 org.telegram.ui.ActionBar.BaseFragment fragment = org.telegram.ui.LaunchActivity.getSafeLastFragment();
                 if (fragment != null) {
+                    int iconRes = kind != null && kind.equals("error")
+                        ? org.telegram.messenger.R.raw.error
+                        : org.telegram.messenger.R.raw.info;
                     org.telegram.ui.Components.BulletinFactory.of(fragment)
-                        .createSimpleBulletin(
-                            kind != null && kind.equals("error")
-                                ? org.telegram.ui.Components.Bulletin.TYPE_ERROR
-                                : org.telegram.messenger.R.drawable.msg_premium_info,
-                            text)
+                        .createSimpleBulletin(iconRes, text)
                         .show();
                 }
             } catch (Throwable t) {
