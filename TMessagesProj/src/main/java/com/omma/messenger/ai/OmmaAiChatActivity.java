@@ -56,6 +56,9 @@ public class OmmaAiChatActivity extends BaseFragment {
     private static final int MENU_STYLE = 6;
     private static final int CONTEXT_MESSAGES = 20;
     private static final int ACCENT = 0xFF2563EB;
+    // re:gram-style monochrome surface tokens: one hue, translucency instead of different colors.
+    private static final int SURFACE_ALPHA = 0xBF; // 75% like n1_800_75
+    private static final int SHADOW_ALPHA = 0x00;
 
     private ChatActivity chat;
     private String chatTitle;
@@ -248,6 +251,18 @@ public class OmmaAiChatActivity extends BaseFragment {
         return drawable;
     }
 
+    /** Monochrome translucent surface: theme base color at SURFACE_ALPHA, no stroke. */
+    private static int surfaceColor() {
+        int base = Theme.getColor(Theme.key_windowBackgroundWhite);
+        return (SURFACE_ALPHA << 24) | (base & 0x00FFFFFF);
+    }
+
+    /** Darker monochrome surface for the input field (like n1_900_80). */
+    private static int fieldColor() {
+        int base = Theme.getColor(Theme.key_windowBackgroundGray);
+        return (SURFACE_ALPHA << 24) | (base & 0x00FFFFFF);
+    }
+
     private View buildInputRow(Context context) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -263,7 +278,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         input.setMaxLines(5);
         input.setImeOptions(EditorInfo.IME_ACTION_SEND);
         input.setPadding(AndroidUtilities.dp(14), AndroidUtilities.dp(10), AndroidUtilities.dp(14), AndroidUtilities.dp(10));
-        input.setBackground(rounded(Theme.getColor(Theme.key_windowBackgroundGray), 20));
+        input.setBackground(rounded(fieldColor(), 20));
         input.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 sendFromInput();
@@ -295,17 +310,15 @@ public class OmmaAiChatActivity extends BaseFragment {
         });
         row.addView(sendButton, LayoutHelper.createLinear(44, 44, 0f, 8, 0, 0, 0));
 
-        // Quick templates: a compact lightning icon next to the input, list pops up on tap.
+        // Templates: round monochrome glass button, same size as the send button.
         TextView templatesButton = new TextView(context);
         templatesButton.setText("⚡");
-        templatesButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        templatesButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         templatesButton.setGravity(Gravity.CENTER);
-        templatesButton.setTextColor(ACCENT);
-        GradientDrawable pill = rounded(0x1A2563EB, 18);
-        pill.setStroke(AndroidUtilities.dp(1), 0x552563EB);
-        templatesButton.setBackground(pill);
+        templatesButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        templatesButton.setBackground(rounded(surfaceColor(), 22));
         templatesButton.setOnClickListener(v -> showPromptsMenu());
-        row.addView(templatesButton, LayoutHelper.createLinear(36, 36, 4f, 8, 0, 0, 0));
+        row.addView(templatesButton, LayoutHelper.createLinear(44, 44, 4f, 8, 0, 0, 0));
         return row;
     }
 
@@ -366,9 +379,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(AndroidUtilities.dp(18), AndroidUtilities.dp(16), AndroidUtilities.dp(18), AndroidUtilities.dp(16));
-        GradientDrawable background = rounded(Theme.getColor(Theme.key_windowBackgroundGray), 18);
-        background.setStroke(AndroidUtilities.dp(1), 0x222563EB);
-        card.setBackground(background);
+        card.setBackground(rounded(surfaceColor(), 18));
 
         TextView title = new TextView(context);
         title.setText(chatTitle != null
@@ -457,8 +468,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         }
         LinearLayout block = new LinearLayout(getContext());
         block.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable background = rounded(Theme.getColor(Theme.key_windowBackgroundGray), 12);
-        background.setStroke(AndroidUtilities.dp(1), 0x33888888);
+        GradientDrawable background = rounded(fieldColor(), 12);
         block.setBackground(background);
         block.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(8), AndroidUtilities.dp(10), AndroidUtilities.dp(8));
 
@@ -497,12 +507,14 @@ public class OmmaAiChatActivity extends BaseFragment {
         bubble.setTextIsSelectable(true);
         bubble.setLineSpacing(0, 1.15f);
         bubble.setPadding(AndroidUtilities.dp(12), AndroidUtilities.dp(9), AndroidUtilities.dp(12), AndroidUtilities.dp(9));
+        // re:gram look: monochrome translucent bubbles, no shadows. Incoming = surface glass,
+        // outgoing = solid accent with dark text (a1_100 with n1_800 text).
         if (user) {
             bubble.setTextColor(0xFFFFFFFF);
             bubble.setBackground(rounded(ACCENT, 16));
         } else {
             bubble.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-            bubble.setBackground(rounded(Theme.getColor(Theme.key_windowBackgroundGray), 16));
+            bubble.setBackground(rounded(surfaceColor(), 16));
         }
         LinearLayout.LayoutParams params = LayoutHelper.createLinear(
             LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
@@ -827,9 +839,7 @@ public class OmmaAiChatActivity extends BaseFragment {
         pill.setTextColor(ACCENT);
         pill.setGravity(Gravity.CENTER);
         pill.setPadding(AndroidUtilities.dp(12), AndroidUtilities.dp(7), AndroidUtilities.dp(12), AndroidUtilities.dp(7));
-        GradientDrawable background = rounded(0x1A2563EB, 16);
-        background.setStroke(AndroidUtilities.dp(1), 0x552563EB);
-        pill.setBackground(background);
+        pill.setBackground(rounded(surfaceColor(), 16));
         return pill;
     }
 

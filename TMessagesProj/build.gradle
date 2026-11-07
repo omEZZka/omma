@@ -2,6 +2,7 @@ import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 apply plugin: 'com.android.library'
 apply plugin: 'org.telegram.build-plugin'
+apply plugin: 'com.chaquo.python'
 apply plugin: 'idea'
 
 idea {
@@ -142,11 +143,29 @@ android {
 
         multiDexEnabled true
 
+        // Chaquopy ships only 64-bit interpreters for Python 3.12+; keep the same ABIs as
+        // the re:gram reference (arm64-v8a only) so the Python runtime is always available.
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+
         externalNativeBuild {
             cmake {
                 version '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-23' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
                 targets 'tmessages.49'
+            }
+        }
+    }
+
+    chaquopy {
+        defaultConfig {
+            version "3.12"
+            buildPython "python3"
+        }
+        sourceSets {
+            getByName("main") {
+                srcDir "src/main/python"
             }
         }
     }

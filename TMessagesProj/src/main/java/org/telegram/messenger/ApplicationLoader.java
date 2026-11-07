@@ -323,6 +323,22 @@ public class ApplicationLoader extends Application {
             applicationContext = getApplicationContext();
         }
 
+        // Omma: start the embedded Python runtime (Chaquopy) for the plugin engine.
+        // Lazy-safe: the engine also guards with Python.isStarted() in case this fails.
+        try {
+            if (!com.chaquo.python.Python.isStarted()) {
+                com.chaquo.python.Python.start(new com.chaquo.python.android.AndroidPlatform(applicationContext));
+            }
+        } catch (Throwable t) {
+            FileLog.e(t);
+        }
+        // Omma: auto-load enabled plugins after the first frame settles.
+        try {
+            com.omma.messenger.plugins.OmmaPluginManager.startup();
+        } catch (Throwable t) {
+            FileLog.e(t);
+        }
+
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
 
         try {

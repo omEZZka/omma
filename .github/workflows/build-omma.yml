@@ -28,6 +28,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Chaquopy buildPython must match the app's Python version (3.12).
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install NDK, CMake and SDK 36
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"

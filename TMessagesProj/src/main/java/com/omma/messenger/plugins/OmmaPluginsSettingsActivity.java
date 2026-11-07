@@ -64,9 +64,37 @@ public final class OmmaPluginsSettingsActivity extends BaseFragment {
         super.onActivityResultFragment(requestCode, resultCode, data);
         if (requestCode == PICK_PLUGIN && resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
             boolean imported = OmmaPluginManager.importPlugin(getParentActivity(), data.getData());
-            android.widget.Toast.makeText(getParentActivity(), imported ? "Плагин импортирован" : "Файл не распознан", android.widget.Toast.LENGTH_SHORT).show();
-            if (imported && list != null) renderPlugins(getParentActivity());
+            String pluginId = null;
+            if (imported) {
+                File directory = new File(getParentActivity().getFilesDir(), "extera_plugins");
+                File[] files = directory.listFiles();
+                if (files != null) {
+                    for (File file : files) {
+                        if (!OmmaPluginManager.getEnabledPlugins().contains(safeId(file))) {
+                            pluginId = OmmaPluginManager.loadPluginFile(file);
+                            if (pluginId != null) {
+                                OmmaPluginManager.setPluginEnabled(pluginId, true);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            String message;
+            if (pluginId != null) {
+                message = "Плагин загружен: " + pluginId;
+            } else if (imported) {
+                message = "Импортировано, но запуск не удался";
+            } else {
+                message = "Файл не распознан";
+            }
+            android.widget.Toast.makeText(getParentActivity(), message, android.widget.Toast.LENGTH_SHORT).show();
+            if (list != null) renderPlugins(getParentActivity());
         }
+    }
+
+    private static String safeId(File file) {
+        return file.getName();
     }
 
     private void renderPlugins(android.content.Context context) {
@@ -80,9 +108,24 @@ public final class OmmaPluginsSettingsActivity extends BaseFragment {
             return;
         }
         for (File file : files) {
-            TextView item = text(context, file.getName(), 15);
+            String id = OmmaPluginManager.pluginIdForFileName(file);
+            String status = id != null && OmmaPluginManager.getEnabledPlugins().contains(id) ? " · работает" : "";
+            TextView item = text(context, file.getName() + status, 15);
             item.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             item.setPadding(AndroidUtilities.dp(12), AndroidUtilities.dp(12), AndroidUtilities.dp(12), AndroidUtilities.dp(12));
+            item.setOnClickListener(v -> {
+                if (id == null) {
+                    return;
+                }
+                boolean enabled = OmmaPluginManager.getEnabledPlugins().contains(id);
+                if (enabled) {
+                    OmmaPluginManager.setPluginEnabled(id, false);
+                } else {
+                    OmmaPluginManager.loadPluginFile(file);
+                    OmmaPluginManager.setPluginEnabled(id, true);
+                }
+                renderPlugins(context);
+            });
             list.addView(item, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 6));
         }
     }
